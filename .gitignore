@@ -1,0 +1,9 @@
+build/
+*.vcd
+*.bit
+*.dcp
+*.jou
+*.log
+.Xil/
+clockInfo.txt
+tight_setup_hold_pins.txt

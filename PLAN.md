@@ -52,12 +52,16 @@
 - Exit: cue output is bounded, reset-safe, and electrically compatible.
 
 ## Milestone 6 — Basys 3 integration
-- [ ] Integrate modules at top level.
-- [ ] Add XDC pin constraints.
-- [ ] Add UART input path and debug UART/LED display.
-- [ ] Run synthesis, implementation, timing, and utilization reports.
-- [ ] Demonstrate recorded GNSS trace replay.
+- [x] Integrate modules at top level (synthetic-trace demo).
+- [x] Add XDC pin constraints.
+- [x] Add LED debug display; UART input/debug path still pending.
+- [x] Run synthesis, implementation, timing, and utilization reports.
+- [ ] Demonstrate recorded GNSS trace replay (synthetic local-coordinate replay done; NMEA/GNSS pending).
 - Exit: repeatable FPGA demo with saved reports and test logs.
+
+Demo status: see `docs/BASYS3_DEMO.md`. The Vivado 2024.2 build met timing
+(WNS +1.701 ns) at 885 LUTs, 628 flip-flops, and 18 DSPs. This is a bench demo
+with a synthetic trace; it is not GNSS, map, or animal validation.
 
 ## Milestone 7 — Controlled validation
 - [ ] Verify map completeness against site survey.

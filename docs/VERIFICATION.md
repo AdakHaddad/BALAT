@@ -43,6 +43,11 @@ Replay timestamped position traces across:
 - Use LED or logic analyzer as cue dummy load.
 - Only then connect an external driver and transducer.
 
+Current demo status: a synthetic local-coordinate trace replay with LED state
+display and a logic-level cue output on JA1 is implemented and verified in
+simulation (`docs/BASYS3_DEMO.md`). The UART/NMEA input path, seven-segment
+display, and recorded GNSS replay are still pending.
+
 ## 2. Required safety tests
 
 - Reset forces cue output inactive.

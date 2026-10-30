@@ -29,3 +29,9 @@
 - Decision: No electrical shock or painful cue. Start with controlled evaluation of conditioned acoustic cues; vibration remains an experimental alternative.
 - Rationale: Cue effectiveness and welfare must be demonstrated, not assumed.
 - Consequence: No live-road animal trials; supervised controlled trials only after appropriate review.
+
+## ADR-006 — Basys 3 synthetic-trace demo
+- Status: Accepted for the bench demo
+- Decision: The first Basys 3 demo replays a compiled synthetic local-coordinate track through the road-distance engine, risk FSM, and cue scheduler. It does not include a GNSS receiver or NMEA parser. The demo road record supplies endpoints plus a precomputed Q14 unit direction, and the geometry engine is pipelined to seven stages and outputs squared distance. The cue output is a 3.3 V logic-level signal on Pmod JA1 for observation only.
+- Rationale: Exercise the integrated risk path on hardware before adding the parser and map-memory path, avoid a runtime divider, and meet 100 MHz timing.
+- Consequence: Demo state transitions are not GNSS validation. The production map contract still requires endpoints and a manifest; the unit direction is a preprocessed derivative. Demo thresholds are not calibrated safety limits.

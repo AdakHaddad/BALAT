@@ -4,8 +4,8 @@ An FPGA-first research and prototyping project for an autonomous livestock weara
 The initial prototype uses standalone synthesizable RTL on a Digilent Basys 3 (Artix-7),
 with external GNSS input and an interchangeable, output-oriented cue module.
 
-> Status: project initialization / architecture baseline. No hardware behavior or animal
-> guidance effectiveness is claimed as validated.
+> Status: architecture baseline plus a synthetic-trace Basys 3 bench demo. GNSS input,
+> map memory, and animal guidance effectiveness are not yet validated.
 
 ## Initial design decision
 
@@ -51,6 +51,7 @@ cue-module protocol are explicitly out of scope for v0.1 unless later justified 
 - `docs/SAFETY_AND_LIMITATIONS.md` — safety constraints and known limitations.
 - `docs/RESEARCH_NOTES.md` — research questions and evidence to collect.
 - `docs/DECISIONS.md` — architecture decision records.
+- `docs/BASYS3_DEMO.md` — build, program, and run the synthetic-trace demo.
 - `rtl/` — synthesizable Verilog/SystemVerilog.
 - `tb/` — testbenches.
 - `constraints/` — Basys 3 XDC constraints.
@@ -65,6 +66,7 @@ cue-module protocol are explicitly out of scope for v0.1 unless later justified 
 4. Start with synthetic road segments and a host-driven UART test.
 5. Add the geometry and risk pipeline only after parser tests pass.
 6. Use a dummy LED/buzzer load before connecting any actuator driver.
+7. Build and run the current synthetic-trace demo with `docs/BASYS3_DEMO.md`.
 
 ## Design principles
 

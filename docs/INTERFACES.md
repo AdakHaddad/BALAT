@@ -72,3 +72,15 @@ Recommended prototype observability:
 - LEDs: current risk state, fix-valid, cue-active, fault.
 - UART TX: position, nearest road segment, distance, approach speed, risk state, cue events.
 - Buttons/switches: reset, test mode, optional scenario selection.
+
+## 6. Demo-specific notes
+
+The current synthetic-trace Basys 3 demo (`docs/BASYS3_DEMO.md`) adds two
+implementation details that do not change the production contracts above:
+
+- The demo road record also stores a precomputed Q14 unit direction for each
+  segment. This is derived offline from the endpoints and avoids a runtime
+  divider. The production map contract still requires endpoints and a manifest.
+- `cue_out` is a 3.3 V logic-level observation signal on Pmod JA1. It is not an
+  actuator drive and must be connected only to a suitable driver stage or test
+  instrument.
