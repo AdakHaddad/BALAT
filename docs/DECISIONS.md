@@ -35,3 +35,21 @@
 - Decision: The first Basys 3 demo replays a compiled synthetic local-coordinate track through the road-distance engine, risk FSM, and cue scheduler. It does not include a GNSS receiver or NMEA parser. The demo road record supplies endpoints plus a precomputed Q14 unit direction, and the geometry engine is pipelined to seven stages and outputs squared distance. The cue output is a 3.3 V logic-level signal on Pmod JA1 for observation only.
 - Rationale: Exercise the integrated risk path on hardware before adding the parser and map-memory path, avoid a runtime divider, and meet 100 MHz timing.
 - Consequence: Demo state transitions are not GNSS validation. The production map contract still requires endpoints and a manifest; the unit direction is a preprocessed derivative. Demo thresholds are not calibrated safety limits.
+
+## ADR-007 — HerdSync-DTN is a post-v0.1 communications study
+- Status: Accepted for the POC; hardware phases need new ADRs
+- Decision: Keep the v0.1 standalone RTL safety path unchanged. Build HerdSync-DTN as a separate communication subsystem, starting with the software proof of concept in `poc/`. Phase 0 validates store-carry-forward, version-vector anti-entropy, phone-mule collection, and rejection of duplicate, stale, and forged records. Future hardware uses a COTS BLE SoC over UART/SPI; the Basys 3 remains the risk/cue engine. Do not implement a BLE stack, custom SoC, or network stack in v0.1 RTL.
+- Rationale: BLE and DTN require a protocol stack, radio, and security lifecycle that are outside the v0.1 workload. A software POC establishes behaviour and metrics before radio selection, firmware work, or RTL changes. A COTS BLE SoC is lower risk and lower cost than a custom SoC at this stage.
+- Consequence: HerdSync-DTN does not affect cue decisions. Neighbor data, phone commands, and emergency messages are telemetry only. Any hardware phase needs a new ADR for the radio, security model, and map/firmware update path. `docs/HERDSYNC_POC.md` defines the POC scope, scenarios, and phased hardware plan.
+
+## ADR-008 — Basys 3 USB-UART bench bridge
+- Status: Accepted for the bench demo; record and peer paths verified on hardware
+- Decision: Add a separate `balat_herdsync_basys3_top` that exposes the synthetic-trace risk engine over the Basys 3 USB-UART bridge at 115200 8N1. Frames are `AA 55 | version 0x01 | type | length | payload | CRC16/CCITT-FALSE`; type `0x01` carries a 36-byte record with a 3-bit risk state (0-4) and type `0x02` carries a 13-byte peer summary. A PC host (`poc/herdsync_dtn/host.py`) acts as the phone/DTN peer. The existing `balat_basys3_top`, `basys3_demo.xdc`, and cue interface are unchanged.
+- Rationale: The user has a Basys 3 but no BLE boards or BLE phone. A USB-UART bridge validates framing, host parsing, and status display using available hardware, and defines the byte pipe a future COTS BLE module will use.
+- Consequence: The bridge is unsigned, unauthenticated, and not a production collar link. UART state is telemetry only and must never drive `cue_out`, the risk FSM, or the cue scheduler. Pins `RsRx=B18` and `RsTx=A18` come from Digilent's `Basys-3-Master.xdc`. Phase 3b (BLE module) still requires a new ADR covering the radio, security, and update path.
+
+## ADR-009 — GNSS receiver selection: u-blox NEO-M8N
+- Status: Accepted for v0.1
+- Decision: Target the u-blox NEO-M8N (or pin-compatible NEO-M9N) GNSS module. Parse the $GNRMC (and $GPRMC) sentence at 9600 baud 8N1, which is the module's default configuration.
+- Rationale: NEO-M8N is widely available, inexpensive ($5-15), supports GPS+GLONASS+Galileo, has 3.3 V UART output compatible with Basys 3 Pmod pins, and defaults to outputting RMC sentences at 1 Hz. The NMEA parser (`rtl/nmea_parser.v`) is already built and tested for $G[PN]RMC. Any module outputting standard NMEA RMC at 3.3 V UART can substitute.
+- Consequence: Default baud rate for the GNSS UART path is 9600. The module-specific configuration (update rate, constellation selection, SBAS) is set via the receiver's own configuration tool, not by the FPGA. The FPGA does not send UBX commands in v0.1.

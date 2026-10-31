@@ -222,7 +222,34 @@ Open the integration waveform with:
 gtkwave build/sim/tb_balat_basys3_top.vcd
 ```
 
-## 11. Measured build results
+## 11. Dashboard POC recording
+
+The local dashboard displays the synthetic trace and can capture an explicitly
+started POC session. It is an observability tool only: it cannot program the
+Basys 3, change switches, or command `cue_out`.
+
+```bash
+python3 scripts/web_demo.py
+```
+
+Open `http://localhost:8888`, enter an optional session label, press **Start**,
+then **Stop** and **Download CSV**. The dashboard records one row per published
+telemetry sample (not per browser poll) and creates a local CSV under
+`build/poc_records/`. Each row contains a UTC capture timestamp, elapsed time,
+source, sequence, coordinates, distance, risk state, approach/cue/cooldown
+flags, battery, and risk/cue transition events.
+
+The dashboard currently uses the synthetic trace. It must not be presented as
+a live GNSS, Bluetooth, or cue-control interface. Basys 3 POC Bluetooth is not
+implemented; the separate USB-UART bridge is bench-only and has no cue-control
+path. To keep captures elsewhere, set an
+explicit local directory:
+
+```bash
+python3 scripts/web_demo.py --record-dir /path/to/poc_records
+```
+
+## 12. Measured build results
 
 Local build with Vivado 2024.2, part `xc7a35tcpg236-1`, Basys 3 rev B:
 
@@ -241,7 +268,7 @@ These are measured values from the local run, not guarantees for other tool
 versions or board revisions. Re-run the build and keep the reports for any
 milestone record.
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
@@ -253,7 +280,7 @@ milestone record.
 | Timing not met | Check Vivado version and the timing report; the geometry path is pipelined to 7 stages |
 | Pin/placement error | Verify the board is rev B and compare with Digilent's `Basys-3-Master.xdc` |
 
-## 13. Safety and limitations
+## 14. Safety and limitations
 
 - `cue_out` on JA1 is a 3.3 V logic-level signal. It must drive a suitable
   transistor/MOSFET or driver IC, never a speaker, motor, or other actuator

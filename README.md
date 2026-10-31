@@ -4,8 +4,11 @@ An FPGA-first research and prototyping project for an autonomous livestock weara
 The initial prototype uses standalone synthesizable RTL on a Digilent Basys 3 (Artix-7),
 with external GNSS input and an interchangeable, output-oriented cue module.
 
-> Status: architecture baseline plus a synthetic-trace Basys 3 bench demo. GNSS input,
-> map memory, and animal guidance effectiveness are not yet validated.
+> Status: architecture baseline plus a synthetic-trace Basys 3 bench demo and a
+> Basys 3 USB-UART record and peer-summary bridge verified on hardware. GNSS
+> input, map memory, and animal guidance effectiveness are not yet validated. A
+> separate post-v0.1 software POC studies gatewayless collar communication; it
+> does not change the v0.1 safety path.
 
 ## Initial design decision
 
@@ -52,10 +55,14 @@ cue-module protocol are explicitly out of scope for v0.1 unless later justified 
 - `docs/RESEARCH_NOTES.md` — research questions and evidence to collect.
 - `docs/DECISIONS.md` — architecture decision records.
 - `docs/BASYS3_DEMO.md` — build, program, and run the synthetic-trace demo.
+- `docs/HERDSYNC_POC.md` — post-v0.1 gatewayless DTN software POC and hardware plan.
+- `docs/BASYS3_HERDSYNC_BRIDGE.md` — Basys 3 USB-UART record bridge and host collector.
 - `rtl/` — synthesizable Verilog/SystemVerilog.
 - `tb/` — testbenches.
 - `constraints/` — Basys 3 XDC constraints.
 - `scripts/` — build and data-conversion scripts.
+- `poc/herdsync_dtn/` — HerdSync-DTN reference model, scenarios, UART frame codec, and host collector.
+- `poc/tests/` — POC unit and scenario tests.
 - `data/` — sample map data and generated road-segment memory images.
 
 ## Quick start
@@ -67,6 +74,10 @@ cue-module protocol are explicitly out of scope for v0.1 unless later justified 
 5. Add the geometry and risk pipeline only after parser tests pass.
 6. Use a dummy LED/buzzer load before connecting any actuator driver.
 7. Build and run the current synthetic-trace demo with `docs/BASYS3_DEMO.md`.
+8. Optionally run the post-v0.1 HerdSync-DTN simulation:
+   `python3 -m poc.herdsync_dtn --scenario all`; see `docs/HERDSYNC_POC.md`.
+9. Stream frames from the Basys 3 to a PC and back with
+   `docs/BASYS3_HERDSYNC_BRIDGE.md`.
 
 ## Design principles
 
