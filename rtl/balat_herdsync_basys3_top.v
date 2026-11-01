@@ -10,11 +10,9 @@
 //   BTNC reset (active high).
 //
 // LEDs:
-//   LED[2:0] risk state, LED[3] valid, LED[4] approaching, LED[5] cue,
-//   LED[6] cooldown, LED[7] fault, LED[8] UART TX busy,
-//   LED[9] TX frame toggle, LED[10] RX frame toggle, LED[11] CRC error seen,
-//   LED[12] TX drop seen, LED[13] peer seen, LED[14] peer risk nonzero,
-//   LED[15] 1 Hz heartbeat.
+//   LED0 SAFE, LED1 CAUTION, LED2 DANGER, LED3 COOLDOWN,
+//   LED4 INVALID/FAULT, LED5 cue active, LED6 UART telemetry heartbeat,
+//   LED7 board heartbeat. LED8..LED15 are inactive for a simple POC display.
 module balat_herdsync_basys3_top #(
     parameter integer CLK_PER_TICK   = 10_000_000,
     parameter integer LAST_INDEX     = 200,
@@ -35,15 +33,11 @@ module balat_herdsync_basys3_top #(
     output wire        RsTx
 );
 
-    localparam [2:0] ST_INVALID = 3'd0;
-
-    localparam [63:0] DIST_1M2  = 64'd10000;
-    localparam [63:0] DIST_2M2  = 64'd40000;
-    localparam [63:0] DIST_3M2  = 64'd90000;
-    localparam [63:0] DIST_4M2  = 64'd160000;
-    localparam [63:0] DIST_5M2  = 64'd250000;
-    localparam [63:0] DIST_7M2  = 64'd490000;
-    localparam [63:0] DIST_10M2 = 64'd1000000;
+    localparam [2:0] ST_INVALID  = 3'd0;
+    localparam [2:0] ST_SAFE     = 3'd1;
+    localparam [2:0] ST_CAUTION  = 3'd2;
+    localparam [2:0] ST_DANGER   = 3'd3;
+    localparam [2:0] ST_COOLDOWN = 3'd4;
 
     (* ASYNC_REG = "TRUE" *) reg [2:0] rst_sync;
     wire rst;
@@ -151,6 +145,7 @@ module balat_herdsync_basys3_top #(
     wire stale_now = stale | force_stale | ~map_valid;
 
     wire [2:0] risk_state;
+    wire [2:0] display_state = stale_now ? ST_INVALID : risk_state;
     wire       cue_req;
     wire       fault;
     wire       cue_en;
@@ -185,6 +180,34 @@ module balat_herdsync_basys3_top #(
 
     wire cue_active = cue_en & cue_enable & ~stale_now & map_valid;
 
+    // The risk FSM updates on the sample tick, so a record latched on that same
+    // edge would carry the previous state while the LEDs already show the new
+    // one. Capture the sample position and latch the UART record one clock
+    // later, using the exact state the LEDs display.
+    reg               record_tick;
+    reg signed [31:0] px_d;
+    reg signed [31:0] py_d;
+    reg signed [31:0] record_x;
+    reg signed [31:0] record_y;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            record_tick <= 1'b0;
+            px_d        <= 32'sd0;
+            py_d        <= 32'sd0;
+            record_x    <= 32'sd0;
+            record_y    <= 32'sd0;
+        end else begin
+            px_d        <= px;
+            py_d        <= py;
+            record_tick <= sample_tick;
+            if (sample_tick) begin
+                record_x <= px_d;
+                record_y <= py_d;
+            end
+        end
+    end
+
     wire        uart_tx_busy;
     wire [15:0] bridge_frames_sent;
     wire [15:0] bridge_frames_received;
@@ -205,12 +228,12 @@ module balat_herdsync_basys3_top #(
     ) u_bridge (
         .clk              (clk),
         .rst              (rst),
-        .sample_tick      (sample_tick),
-        .sample_valid     (sample_tick),
+        .sample_tick      (record_tick),
+        .sample_valid     (record_tick),
         .stale            (stale_now),
-        .risk             (risk_state),
-        .x_cm             (px),
-        .y_cm             (py),
+        .risk             (display_state),
+        .x_cm             (record_x),
+        .y_cm             (record_y),
         .uart_rx          (RsRx),
         .uart_tx          (RsTx),
         .tx_busy          (uart_tx_busy),
@@ -243,19 +266,16 @@ module balat_herdsync_basys3_top #(
 
     assign cue_out = cue_active;
 
-    assign led[2:0]  = stale_now ? ST_INVALID : risk_state;
-    assign led[3]    = ~stale_now;
-    assign led[4]    = approaching & ~stale_now;
+    // The LEDs and the UART record use the same display_state, so the board and
+    // dashboard always show the same high-level status.
+    assign led[0]    = (display_state == ST_SAFE);
+    assign led[1]    = (display_state == ST_CAUTION);
+    assign led[2]    = (display_state == ST_DANGER);
+    assign led[3]    = (display_state == ST_COOLDOWN);
+    assign led[4]    = (display_state == ST_INVALID) | fault;
     assign led[5]    = cue_active;
-    assign led[6]    = cooldown;
-    assign led[7]    = fault;
-    assign led[8]    = uart_tx_busy;
-    assign led[9]    = bridge_frames_sent[0];
-    assign led[10]   = bridge_frames_received[0];
-    assign led[11]   = (bridge_crc_errors != 16'd0);
-    assign led[12]   = (bridge_tx_drops != 16'd0);
-    assign led[13]   = bridge_peer_seen;
-    assign led[14]   = |bridge_peer_risk;
-    assign led[15]   = heartbeat;
+    assign led[6]    = bridge_frames_sent[0];
+    assign led[7]    = heartbeat;
+    assign led[15:8] = 8'd0;
 
 endmodule

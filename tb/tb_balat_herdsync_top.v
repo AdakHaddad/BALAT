@@ -44,6 +44,23 @@ module tb_balat_herdsync_top;
             safe_seen <= 1'b1;
     end
 
+    // Every latched UART record must carry exactly the risk state shown on the
+    // LEDs, including the stale override. In this fast testbench the sample rate
+    // is higher than the UART frame rate, so only check when a record is latched.
+    reg [31:0] rec_seq_d;
+    always @(posedge clk)
+        rec_seq_d <= dut.u_bridge.rec_seq;
+
+    always @(negedge clk) begin
+        if (!btnC && (dut.u_bridge.rec_seq !== rec_seq_d)) begin
+            if (dut.u_bridge.rec_risk !== dut.display_state) begin
+                $display("FAIL: UART record risk %0d does not match LED state %0d at time %0t",
+                         dut.u_bridge.rec_risk, dut.display_state, $time);
+                $fatal;
+            end
+        end
+    end
+
     task wait_for_frames(input integer max_cycles);
         integer n;
         begin
@@ -96,6 +113,10 @@ module tb_balat_herdsync_top;
             $display("FAIL: risk pipeline never reached SAFE");
             $fatal;
         end
+        if (led[0] !== 1'b1) begin
+            $display("FAIL: SAFE dashboard state must light LED0");
+            $fatal;
+        end
         if (dut.u_bridge.crc_errors !== 16'd0) begin
             $display("FAIL: unexpected UART CRC error");
             $fatal;
@@ -107,7 +128,7 @@ module tb_balat_herdsync_top;
 
         sw[1] = 1'b1;
         repeat (3) @(negedge clk);
-        if ((dut.risk_state !== ST_INVALID) || (cue_out !== 1'b0) || (led[7] !== 1'b1)) begin
+        if ((dut.risk_state !== ST_INVALID) || (cue_out !== 1'b0) || (led[4] !== 1'b1)) begin
             $display("FAIL: stale input must force INVALID, fault, and drop cue");
             $fatal;
         end

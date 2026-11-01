@@ -129,18 +129,20 @@ python3 -m unittest discover -s poc/tests -t . -v
 The Icarus suite covers UART TX timing and data, UART RX data and framing-error
 rejection, frame sync/version/length/CRC checks, record field encoding, TX drop
 counting under backpressure, peer-summary parsing, CRC-error rejection, reset,
-the integrated risk path, stale fail-safe, and cue independence from UART state.
+the integrated risk path, stale fail-safe, cue independence from UART state, and
+that every latched record's risk byte matches the LED display state.
 
-The Vivado 2024.2 build for `xc7a35tcpg236-1` met timing with WNS +2.451 ns and
-WHS +0.122 ns, using 1248 LUTs, 1328 registers, 18 DSPs, and no BRAM. These are
+The Vivado 2024.2 build for `xc7a35tcpg236-1` met timing with WNS +0.614 ns and
+WHS +0.127 ns, using 1053 LUTs, 1190 registers, 18 DSPs, and no BRAM. These are
 local bench measurements, not field guarantees.
 
 Physical record-path check: the Basys 3 streamed 320 records over `/dev/ttyUSB1`
 at 115200 baud across two runs. There were no CRC errors and no sequence gaps
 within either run; a reset mid-capture restarted the sequence at 1. Risk states
 0-4 were observed, including COOLDOWN=4. A 30-record run wrote valid JSON Lines.
-The host sent a peer summary; the board's RX counter toggled and the peer-seen
-and peer-risk LEDs lit, confirming the reverse path. A 120 s soak captured 1200
+The host sent a peer summary; the frame was accepted and decoded, with the peer
+counters retained in RTL (the simplified POC display does not expose peer LEDs).
+A 120 s soak captured 1200
 frames with zero sequence gaps, zero CRC errors, zero resets, and zero buffered
 bytes at exit.
 

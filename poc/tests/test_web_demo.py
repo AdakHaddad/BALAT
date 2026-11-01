@@ -50,6 +50,28 @@ class SessionRecorderTest(unittest.TestCase):
             self.assertEqual(rows[1]["cue_active"], "1")
             self.assertEqual(rows[1]["seq"], "2")
 
+    def test_unexported_cue_state_is_blank_in_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recorder = web_demo.SessionRecorder(Path(tmp))
+            recorder.start("uart")
+            recorder.record({"risk_name": "SAFE", "cue_active": None})
+            recorder.stop()
+            with recorder.download_path().open(newline="", encoding="utf-8") as stream:
+                row = next(csv.DictReader(stream))
+            self.assertEqual(row["cue_active"], "")
+
+    def test_reference_map_keeps_manifest_provenance(self):
+        loaded = web_demo.load_reference_map(
+            REPO / "data" / "road_segments.csv",
+            REPO / "data" / "road_manifest.json",
+        )
+        self.assertEqual(loaded["active"]["name"], "Basys3 synthetic demo map")
+        self.assertTrue(loaded["reference"]["available"])
+        self.assertGreater(loaded["reference"]["segment_count"], 0)
+        self.assertIn("OpenStreetMap", loaded["reference"]["source"])
+        self.assertIsInstance(loaded["reference"]["origin_lat"], float)
+        self.assertIsInstance(loaded["reference"]["origin_lon"], float)
+
     def test_start_while_active_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             recorder = web_demo.SessionRecorder(Path(tmp))
@@ -57,6 +79,27 @@ class SessionRecorderTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 recorder.start("two")
             recorder.stop()
+
+
+class UartDashboardStateTest(unittest.TestCase):
+    def test_fpga_record_maps_to_live_dashboard_state(self):
+        previous = {
+            "source": "BASYS3_UART", "seq": 20, "x_cm": -1500,
+            "y_cm": 100, "dist_m": 1.0,
+        }
+        record = {
+            "seq": 21, "x_cm": -1500, "y_cm": 90, "risk": 2,
+            "battery_mv": 3700, "quality": 100, "fix_time_s": 2,
+        }
+
+        state = web_demo.state_from_uart_record(record, previous)
+
+        self.assertEqual(state["source"], "BASYS3_UART")
+        self.assertEqual(state["risk_name"], "CAUTION")
+        self.assertEqual(state["dist_m"], 0.9)
+        self.assertEqual(state["speed_kmh"], 3.6)
+        self.assertTrue(state["approaching"])
+        self.assertIsNone(state["cue_active"])
 
 
 if __name__ == "__main__":

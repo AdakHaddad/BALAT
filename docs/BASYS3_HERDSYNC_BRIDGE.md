@@ -16,6 +16,8 @@ collection without a BLE radio.
 - The existing synthetic trace, road geometry, risk FSM, and cue scheduler still
   run unchanged.
 - Every 100 ms sample emits a 43-byte UART frame containing a 36-byte record.
+  The record is latched one clock after the sample so its risk byte is the same
+  state shown on the risk LEDs.
 - The host validates sync, version, length, and CRC-16/CCITT-FALSE.
 - The host decodes origin, sequence, fix time, local coordinates, quality,
   battery, and risk.
@@ -130,14 +132,14 @@ Measured local build with Vivado 2024.2, part `xc7a35tcpg236-1`:
 
 | Metric | Result |
 | --- | --- |
-| Worst negative slack (WNS) | +2.451 ns |
-| Worst hold slack (WHS) | +0.122 ns |
+| Worst negative slack (WNS) | +0.614 ns |
+| Worst hold slack (WHS) | +0.127 ns |
 | Timing constraints | Met |
-| Slice LUTs | 1248 (6.00%) |
-| Slice registers | 1328 (3.19%) |
+| Slice LUTs | 1053 (5.06%) |
+| Slice registers | 1190 (2.86%) |
 | DSPs | 18 (20.00%) |
 | Block RAM | 0 |
-| Bitstream | about 586 KiB compressed |
+| Bitstream | about 528 KiB compressed |
 
 These are local measurements, not guarantees for other tool versions or board
 revisions.
@@ -154,7 +156,7 @@ Measured hardware run on the local Basys 3:
 | Risk states observed | 0, 1, 2, 3, 4 (COOLDOWN) |
 | JSON Lines check | 30 valid rows |
 | Reset mid-capture | Sequence restarted at 1; run 1 ended at 138, run 2 reached 182 |
-| Peer summary | Host frame accepted; `LED10` toggled, `LED13` and `LED14` lit |
+| Peer summary | Host frame accepted and decoded; counters remain available in RTL but are not shown in the simplified LED display |
 | 120 s soak | 1200 frames, 0 sequence gaps, 0 CRC errors, 0 resets, 0 buffered bytes |
 
 Multi-hour/thermal soak behaviour and BLE remain unverified.
@@ -218,25 +220,20 @@ Controls are the same as the synthetic-trace demo:
 
 | LED | Meaning |
 | --- | --- |
-| `LED2..LED0` | Risk state: 0 INVALID, 1 SAFE, 2 CAUTION, 3 DANGER, 4 COOLDOWN |
-| `LED3` | Input valid |
-| `LED4` | Approaching |
+| `LED0` | SAFE |
+| `LED1` | CAUTION |
+| `LED2` | DANGER |
+| `LED3` | COOLDOWN |
+| `LED4` | INVALID / fault |
 | `LED5` | Cue active |
-| `LED6` | Cooldown |
-| `LED7` | Fault (stale or map invalid) |
-| `LED8` | UART TX busy |
-| `LED9` | TX frame counter bit 0 |
-| `LED10` | RX frame counter bit 0 |
-| `LED11` | A CRC error has been seen |
-| `LED12` | A TX drop has been seen |
-| `LED13` | Peer summary seen |
-| `LED14` | Peer risk nonzero |
-| `LED15` | 1 Hz heartbeat |
+| `LED6` | UART telemetry heartbeat |
+| `LED7` | Board heartbeat |
+| `LED8..LED15` | Off in the simplified POC display |
 
 With `SW0` and `SW2` up and `SW1`/`SW3` down, the host should print a record
 every 100 ms. At 115200 baud a 43-byte frame takes about 3.7 ms, so the 10 Hz
-rate has ample margin. If the host is slow, the board drops records and
-`LED12` latches.
+rate has ample margin. Frame/error counters remain available for host-side
+inspection but are intentionally not shown on the simplified POC LEDs.
 
 ## 10. Simulation
 
@@ -270,8 +267,6 @@ python3 -m unittest discover -s poc/tests -t . -v
 | Permission denied | Add the user to `dialout` on Linux, then log in again |
 | No records | `SW0` up; board reset released; host baud 115200 |
 | Garbled records / CRC errors | Wrong port or baud; confirm the bridge bitstream is programmed |
-| `LED13` never lights | Host did not send a peer summary; use `--send-peer` |
-| `LED12` lights | Host or trace is slower than the UART frame rate; inspect counters |
 | Cue never asserts | `SW2` up; wait for DANGER; check the existing demo sequence |
 | Host exits immediately | `--duration` may be too short; omit it for continuous capture |
 

@@ -224,30 +224,50 @@ gtkwave build/sim/tb_balat_basys3_top.vcd
 
 ## 11. Dashboard POC recording
 
-The local dashboard displays the synthetic trace and can capture an explicitly
-started POC session. It is an observability tool only: it cannot program the
-Basys 3, change switches, or command `cue_out`.
+The local dashboard can capture an explicitly started POC session. It is an
+observability tool only: it cannot program the Basys 3, change switches, or
+command `cue_out`.
 
 ```bash
-python3 scripts/web_demo.py
+python3 scripts/web_demo.py --serial /dev/ttyUSB1
 ```
 
-Open `http://localhost:8888`, enter an optional session label, press **Start**,
-then **Stop** and **Download CSV**. The dashboard records one row per published
-telemetry sample (not per browser poll) and creates a local CSV under
-`build/poc_records/`. Each row contains a UTC capture timestamp, elapsed time,
-source, sequence, coordinates, distance, risk state, approach/cue/cooldown
-flags, battery, and risk/cue transition events.
+This requires the separate HerdSync USB-UART bridge bitstream, described in
+`docs/BASYS3_HERDSYNC_BRIDGE.md`, and `pyserial` on the host:
 
-The dashboard currently uses the synthetic trace. It must not be presented as
-a live GNSS, Bluetooth, or cue-control interface. Basys 3 POC Bluetooth is not
-implemented; the separate USB-UART bridge is bench-only and has no cue-control
-path. To keep captures elsewhere, set an
-explicit local directory:
+```bash
+python3 -m pip install pyserial
+vivado -mode batch -source scripts/build_basys3_herdsync.tcl
+```
+
+Program `build/basys3_herdsync/balat_basys3_herdsync.bit`, then open
+`http://localhost:8888`, enter an optional session label, press **Start**, then
+**Stop** and **Download CSV**. The dashboard decodes the same validated UART
+records that the FPGA emits and records one row per received record (not per
+browser poll) under `build/poc_records/`. Each record carries the same risk
+state as the board LEDs, and the dashboard refreshes at 50 ms so a transition
+appears within one refresh. Each row contains a UTC capture
+timestamp, elapsed time, FPGA sequence, coordinates, FPGA risk state, quality,
+battery, and risk-transition events.
+
+For an offline UI-only rehearsal, omit `--serial` or use `--simulate`. It must
+not be presented as a live GNSS, Bluetooth, or cue-control interface. The v1
+UART record does not export cue-active, so verify cue state on `LED5` or JA1.
+Basys 3 POC Bluetooth is not implemented; the USB-UART bridge is bench-only and
+has no cue-control path. To keep captures elsewhere, set an explicit local
+directory:
 
 ```bash
 python3 scripts/web_demo.py --record-dir /path/to/poc_records
 ```
+
+The dashboard uses OpenStreetMap base-map tiles (internet required) centered on
+the local-map origin. It always draws the active fixed synthetic segment that
+the current FPGA bitstream uses in red. When `data/road_segments.csv` and
+`data/road_manifest.json` are present, it also draws their OSM-derived local
+segments in light blue as a **reference-only** layer and displays source,
+timestamp, and attribution. Those segments are not loaded into this FPGA
+bitstream and must not be represented as the active on-board map.
 
 ## 12. Measured build results
 

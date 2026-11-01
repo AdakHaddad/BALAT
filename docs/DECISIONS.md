@@ -53,3 +53,9 @@
 - Decision: Target the u-blox NEO-M8N (or pin-compatible NEO-M9N) GNSS module. Parse the $GNRMC (and $GPRMC) sentence at 9600 baud 8N1, which is the module's default configuration.
 - Rationale: NEO-M8N is widely available, inexpensive ($5-15), supports GPS+GLONASS+Galileo, has 3.3 V UART output compatible with Basys 3 Pmod pins, and defaults to outputting RMC sentences at 1 Hz. The NMEA parser (`rtl/nmea_parser.v`) is already built and tested for $G[PN]RMC. Any module outputting standard NMEA RMC at 3.3 V UART can substitute.
 - Consequence: Default baud rate for the GNSS UART path is 9600. The module-specific configuration (update rate, constellation selection, SBAS) is set via the receiver's own configuration tool, not by the FPGA. The FPGA does not send UBX commands in v0.1.
+
+## ADR-010 — Read-only Basys3 dashboard telemetry
+- Status: Accepted for the bench POC
+- Decision: The dashboard consumes only validated type-`0x01` USB-UART records from `balat_herdsync_basys3_top` at 115200 baud. It may calculate presentation-only speed, approach, and distance for the fixed synthetic demo segment, and it may write explicitly started local CSV sessions. It exposes no HTTP endpoint or serial command path to FPGA controls, risk state, or cue output.
+- Rationale: A single, visible host display and recording artifact should reflect the same FPGA records as the board LEDs, while preserving the output-only cue boundary.
+- Consequence: The current dashboard is a bench observability tool, not a production application. UART v1 does not carry cue-active, so cue state is verified on LED5 or JA1. The OSM-derived `road_segments.csv` layer is clearly labelled reference-only because it is not loaded into the current fixed-segment bitstream; its source and ODbL attribution stay in `road_manifest.json`.

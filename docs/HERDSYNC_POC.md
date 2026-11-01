@@ -248,16 +248,17 @@ AA 55 | version 0x01 | type | length | payload | CRC16/CCITT-FALSE
 - Type `0x02`: 13-byte peer summary (`peer_id`, `seq`, `fix_time_s`, `risk`).
 
 `poc/herdsync_dtn/host.py` validates frames, prints records, optionally writes
-JSON Lines, and can send a peer summary back to the board. The RTL bridge reports
-TX/RX frame counts, CRC errors, TX drops, and peer status on LEDs. It never feeds
-the risk FSM or cue scheduler.
+JSON Lines, and can send a peer summary back to the board. The RTL bridge retains
+TX/RX frame counts, CRC errors, TX drops, and peer status for host-side
+inspection; the simplified POC LEDs show only risk, cue, and heartbeats. It never
+feeds the risk FSM or cue scheduler.
 
 Bench results: Icarus simulations pass; the Vivado 2024.2 build met timing
-(WNS +2.451 ns, WHS +0.122 ns) at 1248 LUTs, 1328 flip-flops, and 18 DSPs. On
+(WNS +0.614 ns, WHS +0.127 ns) at 1053 LUTs, 1190 flip-flops, and 18 DSPs. On
 hardware, `/dev/ttyUSB1` delivered 320 records over two runs with no CRC errors
 and no sequence gaps within each run; risk states 0-4 (including COOLDOWN) were
 observed, and JSON Lines output was validated. A host peer summary was accepted,
-confirmed by the RX counter and the peer-seen/peer-risk LEDs. A 120 s soak
+confirmed by the RX counter (the simplified display does not expose peer LEDs). A 120 s soak
 delivered 1200 frames with no CRC errors, sequence gaps, or resets. See
 `docs/BASYS3_HERDSYNC_BRIDGE.md` for build, pin, LED, and host commands.
 
