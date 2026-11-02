@@ -69,7 +69,7 @@ and leave the build settings at their detected values:
 
 - Base directory: `web`
 - Build command: `npm run build`
-- Publish directory: `.next`
+- Publish directory: `out`
 
 Set `NEXT_PUBLIC_BALAT_API_URL` in the Netlify site environment variables when
 the deployed dashboard should poll a reachable telemetry bridge. If it is not
