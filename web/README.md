@@ -61,6 +61,20 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Deploy on Netlify
+
+The repository includes a root-level [`netlify.toml`](../netlify.toml) configured
+with `web/` as the Netlify base directory. In Netlify, connect the repository
+and leave the build settings at their detected values:
+
+- Base directory: `web`
+- Build command: `npm run build`
+- Publish directory: `.next`
+
+Set `NEXT_PUBLIC_BALAT_API_URL` in the Netlify site environment variables when
+the deployed dashboard should poll a reachable telemetry bridge. If it is not
+set, the dashboard uses its built-in synthetic snapshot.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
