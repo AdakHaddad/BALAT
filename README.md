@@ -55,6 +55,8 @@ cue-module protocol are explicitly out of scope for v0.1 unless later justified 
 - `docs/RESEARCH_NOTES.md` — research questions and evidence to collect.
 - `docs/DECISIONS.md` — architecture decision records.
 - `docs/BASYS3_DEMO.md` — build, program, and run the synthetic-trace demo.
+- `docs/PROTOTYPE_RUNBOOK.md` — improve the FPGA prototype toward a real-GNSS lab demonstrator.
+- `docs/MICROCONTROLLER_PROTOTYPE.md` — parallel MCU prototype for GNSS, power, logging, and field-data validation.
 - `docs/HERDSYNC_POC.md` — post-v0.1 gatewayless DTN software POC and hardware plan.
 - `docs/BASYS3_HERDSYNC_BRIDGE.md` — Basys 3 USB-UART record bridge and host collector.
 - `rtl/` — synthesizable Verilog/SystemVerilog.
@@ -74,9 +76,11 @@ cue-module protocol are explicitly out of scope for v0.1 unless later justified 
 5. Add the geometry and risk pipeline only after parser tests pass.
 6. Use a dummy LED/buzzer load before connecting any actuator driver.
 7. Build and run the current synthetic-trace demo with `docs/BASYS3_DEMO.md`.
-8. Optionally run the post-v0.1 HerdSync-DTN simulation:
+8. Follow `docs/PROTOTYPE_RUNBOOK.md` before describing a real-GNSS or map-aware FPGA demo.
+9. Use `docs/MICROCONTROLLER_PROTOTYPE.md` for a parallel wearable and field-data prototype.
+10. Optionally run the post-v0.1 HerdSync-DTN simulation:
    `python3 -m poc.herdsync_dtn --scenario all`; see `docs/HERDSYNC_POC.md`.
-9. Stream frames from the Basys 3 to a PC and back with
+11. Stream frames from the Basys 3 to a PC and back with
    `docs/BASYS3_HERDSYNC_BRIDGE.md`.
 
 ## Design principles
