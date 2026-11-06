@@ -55,10 +55,13 @@ static void outputs_apply(void)
     bool active = s->cue_active && s->cue_enable && !s->manual_disable &&
                   s->risk_state != BALAT_RISK_INVALID;
 
-    gpio_set_level(CONFIG_BALAT_CUE_BUZZER_GPIO,
-                   (active && CONFIG_BALAT_CUE_MODULE_BUZZER) ? 1 : 0);
-    gpio_set_level(CONFIG_BALAT_CUE_MOTOR_GPIO,
-                   (active && CONFIG_BALAT_CUE_MODULE_MOTOR) ? 1 : 0);
+#if CONFIG_BALAT_CUE_MODULE_BUZZER
+    gpio_set_level(CONFIG_BALAT_CUE_BUZZER_GPIO, active ? 1 : 0);
+    gpio_set_level(CONFIG_BALAT_CUE_MOTOR_GPIO, 0);
+#else
+    gpio_set_level(CONFIG_BALAT_CUE_BUZZER_GPIO, 0);
+    gpio_set_level(CONFIG_BALAT_CUE_MOTOR_GPIO, active ? 1 : 0);
+#endif
     gpio_set_level(CONFIG_BALAT_LED_INVALID_GPIO,
                    s->risk_state == BALAT_RISK_INVALID ? 1 : 0);
     gpio_set_level(CONFIG_BALAT_LED_CAUTION_GPIO,

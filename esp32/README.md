@@ -1,6 +1,7 @@
 # BALAT ESP32-C3 bench prototype
 
 This is an ESP-IDF v5.x bench firmware target with a portable C decision core.
+It has been built with ESP-IDF v5.5.6 for `esp32c3`.
 It mirrors the observable v0.1 RTL contracts; it does not replace the FPGA
 architecture or establish animal-guidance or road-safety performance.
 
@@ -50,14 +51,26 @@ in Kconfig so only its protected driver-enable output is activated.
 
 ## Build and bench commands
 
-ESP-IDF is not bundled in this repository. With ESP-IDF v5.x installed:
+Install the ESP32-C3 target tools using Espressif's [Linux/macOS setup
+guide](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32c3/get-started/linux-macos-setup.html).
+Then source the environment and build:
 
 ```bash
 cd esp32
-. $IDF_PATH/export.sh
+. /path/to/esp-idf/export.sh
 idf.py set-target esp32c3
-idf.py build flash monitor
+idf.py build
 ```
+
+Connect the board and identify its serial device before flashing:
+
+```bash
+idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+Replace `/dev/ttyUSB0` with the actual port (`/dev/ttyACM0` is also common).
+No ESP32-C3 board was connected during this build, so flash and live serial
+demonstration still need a board.
 
 Run the portable host regression without ESP-IDF:
 
