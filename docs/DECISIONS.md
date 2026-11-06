@@ -59,3 +59,9 @@
 - Decision: The dashboard consumes only validated type-`0x01` USB-UART records from `balat_herdsync_basys3_top` at 115200 baud. It may calculate presentation-only speed, approach, and distance for the fixed synthetic demo segment, and it may write explicitly started local CSV sessions. It exposes no HTTP endpoint or serial command path to FPGA controls, risk state, or cue output.
 - Rationale: A single, visible host display and recording artifact should reflect the same FPGA records as the board LEDs, while preserving the output-only cue boundary.
 - Consequence: The current dashboard is a bench observability tool, not a production application. UART v1 does not carry cue-active, so cue state is verified on LED5 or JA1. The OSM-derived `road_segments.csv` layer is clearly labelled reference-only because it is not loaded into the current fixed-segment bitstream; its source and ODbL attribution stay in `road_manifest.json`.
+
+## ADR-011 — ESP32-C3 portable-core bench prototype
+- Status: Accepted for the MCU bench prototype only
+- Decision: Implement the ESP32-C3 prototype with ESP-IDF v5.x and a portable, fixed-point C `balat_core`. It consumes the existing map and replay data, preserves RTL coordinate/risk contracts, and keeps GPIO actuation behind a physical cue-enable input and protected external driver.
+- Rationale: This permits GNSS/UART, power, logging, and replay bench work without changing the standalone RTL v0.1 architecture. A host-compiled core gives regression coverage where ESP-IDF hardware tooling is unavailable.
+- Consequence: USB/replay/NMEA paths cannot enable a cue, map checksum/version validation is mandatory, and every decision is CSV logged. The MCU defaults to a 500 ms maximum cue and 30 s cooldown as a conservative bench setting. It remains a field-data/bench prototype, not a production collar or evidence of animal guidance.

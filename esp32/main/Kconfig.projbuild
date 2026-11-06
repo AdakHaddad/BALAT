@@ -1,0 +1,43 @@
+menu "BALAT bench prototype"
+
+config BALAT_GNSS_RX_GPIO
+    int "GNSS UART RX GPIO"
+    default 4
+config BALAT_GNSS_TX_GPIO
+    int "GNSS UART TX GPIO"
+    default 5
+config BALAT_CUE_BUZZER_GPIO
+    int "Protected buzzer-driver enable GPIO"
+    default 6
+config BALAT_CUE_MOTOR_GPIO
+    int "Protected motor-driver enable GPIO"
+    default 7
+config BALAT_LED_INVALID_GPIO
+    int "Invalid LED GPIO"
+    default 10
+config BALAT_LED_CAUTION_GPIO
+    int "Caution LED GPIO"
+    default 3
+
+choice BALAT_CUE_MODULE
+    prompt "Bench cue module"
+    default BALAT_CUE_MODULE_BUZZER
+
+config BALAT_CUE_MODULE_BUZZER
+    bool "Protected buzzer driver"
+
+config BALAT_CUE_MODULE_MOTOR
+    bool "Protected vibration driver"
+endchoice
+
+config BALAT_LED_SAFE_GPIO
+    int "Safe LED GPIO (optional; avoid UART0 GPIO20/21)"
+    default -1
+config BALAT_MANUAL_DISABLE_GPIO
+    int "Manual-disable input GPIO, active low"
+    default 0
+config BALAT_CUE_ENABLE_GPIO
+    int "Physical cue-enable input GPIO, active high"
+    default 1
+
+endmenu
