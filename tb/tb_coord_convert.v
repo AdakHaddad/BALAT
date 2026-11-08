@@ -50,7 +50,8 @@ module tb_coord_convert;
         fix_ready <= 1'b1;
         @(posedge clk);
         fix_ready <= 1'b0;
-        @(posedge clk);
+        wait (pos_ready === 1'b1);
+        #1;
 
         if (px !== 32'sd0 || py !== 32'sd0) begin
             $display("FAIL Test 1: origin expected (0,0), got (%0d, %0d)", px, py);
@@ -67,7 +68,8 @@ module tb_coord_convert;
         fix_ready <= 1'b1;
         @(posedge clk);
         fix_ready <= 1'b0;
-        @(posedge clk);
+        wait (pos_ready === 1'b1);
+        #1;
 
         if (py < 32'sd1100 || py > 32'sd1125 || px !== 32'sd0) begin
             $display("FAIL Test 2: expected py~1112, got px=%0d, py=%0d", px, py);

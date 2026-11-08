@@ -1,34 +1,42 @@
 # BALAT ESP32-C3 bench prototype
 
-This is an ESP-IDF v5.x bench firmware target with a portable C decision core.
-It has been built with ESP-IDF v5.5.6 for `esp32c3`.
+This is an ESP-IDF v5.x firmware target for the BALAT-P platform and its
+portable C decision core. The default pin profile matches the current
+`BALAT_PCB_v1` main board signal nets.
 It mirrors the observable v0.1 RTL contracts; it does not replace the FPGA
 architecture or establish animal-guidance or road-safety performance.
 
+For assembly and dashboard operation, see
+[`../docs/ESP32_ASSEMBLY_DEMO.md`](../docs/ESP32_ASSEMBLY_DEMO.md). Signal
+mapping now matches the main PCB. The PCB power path is still marked HOLD;
+follow the bench-power restrictions in the guide and
+[`../docs/PCB_LAYOUT_REVIEW_2026-11-08.md`](../docs/PCB_LAYOUT_REVIEW_2026-11-08.md).
+
 ## Safety boundary
 
-- GPIO 6 and GPIO 7 are output-only inputs to protected external buzzer/motor
-  drivers. Never connect a motor or speaker directly to these pins.
+- GPIO 3 and GPIO 4 drive only the PCB's existing protected buzzer and motor
+  transistor stages. They are never direct motor/speaker outputs.
 - Reset, an invalid/stale/uncertain/corrupt fix, map failure, an out-of-range
   coordinate, a trajectory fault, or manual disable force cue output off.
-- A physical active-high `CUE_ENABLE` switch on GPIO 1 is the sole cue-enable
-  authority. USB commands, replay, NMEA, and any future HerdSync/telemetry path
-  cannot enable or extend a cue.
-- GPIO 0 is an active-low manual disable with pull-up. Defaults avoid ESP32-C3
-  strapping GPIO 2, 8, and 9.
+- The PCB report button on GPIO 6 is used as a **hold-to-enable** input: the
+  operator must hold it to permit a bounded cue, and release immediately
+  disables outputs. Dashboard commands and mock GPS never arm a cue.
+- GPIO 5 controls GPS power through the PCB PNP switch (active low). GPIO 20 is
+  GPS UART RX. The console uses native USB Serial/JTAG to avoid sharing GPIO20
+  with the PCB GPS TX net. Defaults avoid ESP32-C3 strapping GPIO 2, 8, and 9.
 
 | Signal | Default GPIO | Direction |
 |---|---:|---|
-| GNSS RX / TX | 4 / 5 | UART1 input / output |
-| Protected buzzer / motor driver enable | 6 / 7 | output only |
-| Invalid / caution / safe LED | 10 / 3 / disabled | output |
-| Manual disable | 0 | input, active low |
-| Physical cue enable | 1 | input, active high |
+| PCB buzzer driver / motor driver | 3 / 4 | output only, bounded cue |
+| GPS enable | 5 | output, active low |
+| PCB button / cue enable | 6 | input, hold low to arm |
+| PCB status LED | 10 | output, active high |
+| GPS TX → ESP32 UART RX | 20 | UART1 input |
+| USB console | native USB Serial/JTAG | commands and logs |
 
-All defaults are Kconfig-configurable in `main/Kconfig.projbuild`. GPIO20/21
-are reserved for the default UART0 USB serial console. The safe LED is disabled
-by default; the invalid and caution LEDs remain available. Select one cue module
-in Kconfig so only its protected driver-enable output is activated.
+Defaults are Kconfig-configurable in `main/Kconfig.projbuild`. During a bounded
+cue the firmware activates both protected PCB stages; the single PCB LED blinks
+for INVALID, is steady for CAUTION/DANGER/COOLDOWN, and is off for SAFE.
 
 ## Runtime contract
 
@@ -83,10 +91,11 @@ make -C esp32/test clean all
 Regenerate fixtures whenever either source CSV/JSON changes. The generator
 uses the same little-endian FNV-1a field order as `balat_map_checksum`.
 
-USB serial commands are `HELP`, `STATUS`, `MAP`, `REPLAY START|STOP|RESET`,
-`FIX <x_cm> <y_cm>`, `NMEA <sentence>`, `FAULT NONE|STALE|MAP|CORRUPT`,
-`CLEAR`, and `RESET`. `FIX` and `REPLAY` are bench/replay facilities, not map
-or cue authorization paths.
+USB serial commands include `MOCK START|PAUSE|RESET|STOP`. The dashboard sends
+checksummed mock NMEA through this USB console; firmware then uses the same
+NMEA/fix-gating/map/risk pipeline as receiver data. `NMEA <sentence>` is
+accepted only after `MOCK START`. `STATUS`, `MAP`, `REPLAY`, `FIX`, `FAULT`,
+`CLEAR`, and `RESET` remain bench tools and cannot arm outputs.
 
 Start with no actuator connected, then a protected dummy load only. Follow
 `docs/MICROCONTROLLER_PROTOTYPE.md` before any outdoor or animal-related work.

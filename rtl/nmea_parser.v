@@ -26,8 +26,9 @@
 //   speed_kn  : unsigned 16-bit, 0..65535 (0..655.35 knots)
 //   utc_time  : unsigned 24-bit packed BCD
 //
-// Latency: one cycle after the final checksum character to fix_ready.
-// Resource: no multipliers, no BRAM. Uses a combinational divide-by-3 function.
+// Latency: seven cycles after the final checksum character to fix_ready. The
+// coordinate conversion is split across cycles for 100 MHz timing.
+// Resource: no BRAM. Coordinate conversion uses staged constant arithmetic.
 
 module nmea_parser (
     input  wire        clk,
@@ -58,8 +59,14 @@ module nmea_parser (
     localparam S_SKIP       = 4'd9;
     localparam S_CKSUM_HI   = 4'd10;
     localparam S_CKSUM_LO   = 4'd11;
+    localparam S_CONV_LAT1  = 4'd12;
+    localparam S_CONV_MID   = 4'd13;
+    localparam S_CONV_LON   = 4'd14;
+    localparam S_CONV_OUT   = 4'd15;
+    localparam [4:0] S_CONV_SIGN = 5'd16;
+    localparam [4:0] S_CONV_X50 = 5'd17;
 
-    reg [3:0] state, state_next;
+    reg [4:0] state, state_next;
     reg [3:0] char_idx;
     reg [7:0] xor_ck;            // running XOR between '$' and '*'
     reg       xor_active;
@@ -86,18 +93,13 @@ module nmea_parser (
     // ---------------------------------------------------------------
     function [31:0] div3;
         input [31:0] x;
-        reg [31:0] q, r;
-        integer i;
+        reg [32:0] rounded_input;
+        reg [64:0] product;
         begin
-            q = 0; r = 0;
-            for (i = 31; i >= 0; i = i - 1) begin
-                r = {r[30:0], x[i]};
-                if (r >= 32'd3) begin
-                    q[i] = 1'b1;
-                    r = r - 32'd3;
-                end
-            end
-            div3 = (r >= 32'd2) ? q + 32'd1 : q;
+            // round(x/3) as floor((x+1)/3), using ceil(2^33/3).
+            rounded_input = {1'b0, x} + 33'd1;
+            product = rounded_input * 32'hAAAAAAAB;
+            div3 = product[64:33];
         end
     endfunction
 
@@ -111,8 +113,18 @@ module nmea_parser (
     reg [31:0] p_min_frac;
     reg [3:0]  p_min_frac_d;
     reg        past_dot;
-    reg signed [31:0] p_lat;
-    reg signed [31:0] p_lon;
+    reg [15:0] lat_deg_raw, lon_deg_raw;
+    reg [31:0] lat_min_int_raw, lon_min_int_raw;
+    reg [31:0] lat_min_frac_raw, lon_min_frac_raw;
+    reg [3:0] lat_min_frac_d_raw, lon_min_frac_d_raw;
+    reg lat_negative, lon_negative;
+    reg [31:0] lat_base_q, lon_base_q;
+    reg [31:0] lat_min_base_q, lon_min_base_q;
+    reg [31:0] lat_min_pad_q, lon_min_pad_q;
+    reg [31:0] lat_min_comb_q, lon_min_comb_q;
+    reg [31:0] lat_min_x50_q, lon_min_x50_q;
+    reg [31:0] lat_min_deg7_q, lon_min_deg7_q;
+    reg [31:0] lat_result_q, lon_result_q;
     reg [31:0] spd_int;
     reg [31:0] spd_frac;
     reg [3:0]  spd_frac_d;
@@ -120,22 +132,21 @@ module nmea_parser (
     reg [7:0]  p_cksum_hi;  // high nibble of expected checksum
 
     // ---------------------------------------------------------------
-    // Combinational: convert deg + min fields to 1e-7 degrees
-    // Formula: deg7 = deg * 10_000_000 + div3(min_combined * 50)
-    //   where min_combined = min_int * 10^4 + min_frac (padded to 4 digits)
+    // Coordinate fields are converted in registered stages after checksum.
     // ---------------------------------------------------------------
-    // Pad min_frac to 4 digits
-    wire [31:0] min_frac_padded =
-        (p_min_frac_d == 4'd0) ? 32'd0 :
-        (p_min_frac_d == 4'd1) ? p_min_frac * 1000 :
-        (p_min_frac_d == 4'd2) ? p_min_frac * 100 :
-        (p_min_frac_d == 4'd3) ? p_min_frac * 10 :
-                                 p_min_frac;
-
-    wire [31:0] min_combined = p_min_int * 32'd10000 + min_frac_padded;
-    wire [31:0] min_x50      = min_combined * 32'd50;
-    wire [31:0] min_deg7     = div3(min_x50);
-    wire [31:0] coord_deg7   = p_deg * 32'd10_000_000 + min_deg7;
+    function [31:0] frac_to_4;
+        input [31:0] value;
+        input [3:0] digits;
+        begin
+            case (digits)
+                4'd0: frac_to_4 = 32'd0;
+                4'd1: frac_to_4 = value * 32'd1000;
+                4'd2: frac_to_4 = value * 32'd100;
+                4'd3: frac_to_4 = value * 32'd10;
+                default: frac_to_4 = value;
+            endcase
+        end
+    endfunction
 
     // ---------------------------------------------------------------
     // Main FSM
@@ -154,8 +165,30 @@ module nmea_parser (
             char_idx   <= 4'd0;
             p_utc      <= 24'd0;
             p_status   <= 1'b0;
-            p_lat      <= 32'sd0;
-            p_lon      <= 32'sd0;
+            lat_deg_raw <= 16'd0;
+            lon_deg_raw <= 16'd0;
+            lat_min_int_raw <= 32'd0;
+            lon_min_int_raw <= 32'd0;
+            lat_min_frac_raw <= 32'd0;
+            lon_min_frac_raw <= 32'd0;
+            lat_min_frac_d_raw <= 4'd0;
+            lon_min_frac_d_raw <= 4'd0;
+            lat_negative <= 1'b0;
+            lon_negative <= 1'b0;
+            lat_base_q <= 32'd0;
+            lon_base_q <= 32'd0;
+            lat_min_base_q <= 32'd0;
+            lon_min_base_q <= 32'd0;
+            lat_min_pad_q <= 32'd0;
+            lon_min_pad_q <= 32'd0;
+            lat_min_comb_q <= 32'd0;
+            lon_min_comb_q <= 32'd0;
+            lat_min_x50_q <= 32'd0;
+            lon_min_x50_q <= 32'd0;
+            lat_min_deg7_q <= 32'd0;
+            lon_min_deg7_q <= 32'd0;
+            lat_result_q <= 32'd0;
+            lon_result_q <= 32'd0;
             p_speed    <= 16'd0;
             p_deg      <= 16'd0;
             p_min_int  <= 32'd0;
@@ -169,7 +202,7 @@ module nmea_parser (
         end else begin
             fix_ready <= 1'b0;
 
-            if (rx_valid) begin
+            if (rx_valid || (state >= S_CONV_LAT1)) begin
                 // XOR checksum accumulation
                 if (xor_active && rx_data != "*")
                     xor_ck <= xor_ck ^ rx_data;
@@ -247,7 +280,10 @@ module nmea_parser (
 
                 S_LAT: begin
                     if (rx_data == ",") begin
-                        p_lat    <= $signed(coord_deg7);
+                        lat_deg_raw <= p_deg;
+                        lat_min_int_raw <= p_min_int;
+                        lat_min_frac_raw <= p_min_frac;
+                        lat_min_frac_d_raw <= p_min_frac_d;
                         state    <= S_NS;
                         char_idx <= 4'd0;
                     end else if (rx_data == ".") begin
@@ -280,13 +316,18 @@ module nmea_parser (
                         past_dot     <= 1'b0;
                     end else begin
                         if (rx_data == "S" || rx_data == "s")
-                            p_lat <= -p_lat;
+                            lat_negative <= 1'b1;
+                        else if (rx_data == "N" || rx_data == "n")
+                            lat_negative <= 1'b0;
                     end
                 end
 
                 S_LON: begin
                     if (rx_data == ",") begin
-                        p_lon    <= $signed(coord_deg7);
+                        lon_deg_raw <= p_deg;
+                        lon_min_int_raw <= p_min_int;
+                        lon_min_frac_raw <= p_min_frac;
+                        lon_min_frac_d_raw <= p_min_frac_d;
                         state    <= S_EW;
                         char_idx <= 4'd0;
                     end else if (rx_data == ".") begin
@@ -318,7 +359,9 @@ module nmea_parser (
                         past_dot   <= 1'b0;
                     end else begin
                         if (rx_data == "W" || rx_data == "w")
-                            p_lon <= -p_lon;
+                            lon_negative <= 1'b1;
+                        else if (rx_data == "E" || rx_data == "e")
+                            lon_negative <= 1'b0;
                     end
                 end
 
@@ -362,15 +405,58 @@ module nmea_parser (
                 S_CKSUM_LO: begin
                     // Validate checksum
                     if ({p_cksum_hi[3:0], hex_val(rx_data)} == xor_ck) begin
-                        lat_deg7  <= p_lat;
-                        lon_deg7  <= p_lon;
-                        speed_kn  <= p_speed;
-                        utc_time  <= p_utc;
-                        fix_valid <= p_status;
-                        fix_ready <= 1'b1;
+                        state <= S_CONV_LAT1;
+                    end else begin
+                        // Bad checksum: drop silently.
+                        state <= S_IDLE;
                     end
-                    // else: bad checksum, drop silently
-                    state <= S_IDLE;
+                end
+
+                S_CONV_LAT1: begin
+                    lat_base_q <= lat_deg_raw * 32'd10_000_000;
+                    lon_base_q <= lon_deg_raw * 32'd10_000_000;
+                    lat_min_base_q <= lat_min_int_raw * 32'd10000;
+                    lon_min_base_q <= lon_min_int_raw * 32'd10000;
+                    lat_min_pad_q <= frac_to_4(lat_min_frac_raw, lat_min_frac_d_raw);
+                    lon_min_pad_q <= frac_to_4(lon_min_frac_raw, lon_min_frac_d_raw);
+                    state         <= S_CONV_MID;
+                end
+
+                S_CONV_MID: begin
+                    lat_min_comb_q <= lat_min_base_q + lat_min_pad_q;
+                    lon_min_comb_q <= lon_min_base_q + lon_min_pad_q;
+                    state          <= S_CONV_X50;
+                end
+
+                S_CONV_X50: begin
+                    lat_min_x50_q <= lat_min_comb_q * 32'd50;
+                    lon_min_x50_q <= lon_min_comb_q * 32'd50;
+                    state          <= S_CONV_LON;
+                end
+
+                S_CONV_LON: begin
+                    lat_min_deg7_q <= div3(lat_min_x50_q);
+                    lon_min_deg7_q <= div3(lon_min_x50_q);
+                    state <= S_CONV_OUT;
+                end
+
+                S_CONV_OUT: begin
+                    lat_result_q <= lat_base_q + lat_min_deg7_q;
+                    lon_result_q <= lon_base_q + lon_min_deg7_q;
+                    state <= S_CONV_SIGN;
+                end
+
+                S_CONV_SIGN: begin
+                    lat_deg7  <= lat_negative ?
+                        -$signed(lat_result_q) : $signed(lat_result_q);
+                    lon_deg7  <= lon_negative ?
+                        -$signed(lon_result_q) : $signed(lon_result_q);
+                    speed_kn  <= p_speed;
+                    utc_time  <= p_utc;
+                    fix_valid <= p_status;
+                    fix_ready <= 1'b1;
+                    state     <= S_IDLE;
+                    xor_active <= 1'b0;
                 end
 
                 default: begin

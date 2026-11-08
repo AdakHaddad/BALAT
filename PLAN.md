@@ -71,9 +71,20 @@ and a 1200-frame/120 s soak with no CRC errors, sequence gaps, or resets. See
 ## Parallel ESP32-C3 bench prototype
 - [x] Implement portable C contracts for NMEA, fixed-point coordinates, map checksum, geometry, trajectory, risk FSM, bounded cue, logging, and replay in `esp32/`.
 - [x] Add host regression for RTL geometry vectors, parser failures, map corruption, thresholds, cue bounds, and synthetic replay.
-- [x] Install ESP-IDF v5.5.6 ESP32-C3 tools and build the firmware binary.
-- [ ] Flash and run the serial/replay demo on an ESP32-C3 board; no board is currently attached.
+- [x] Add the PCB signal profile: buzzer GPIO3, motor GPIO4, GPS power GPIO5, hold-to-enable button GPIO6, status LED GPIO10, and GNSS RX GPIO20.
+- [x] Add dashboard start/pause/reset/GPS-mode and mock-fix-rate controls for checksummed NMEA input; controls cannot arm cues.
+- [x] Use the installed ESP-IDF v5.5.6 ESP32-C3 toolchain and build the firmware binary.
+- [ ] Flash and run the serial/replay demo on an ESP32-C3 board; confirm the exact module USB wiring first.
 - [ ] Measure GPIO cue timing with a protected dummy load before any actuator connection.
+- [ ] Close PCB v1 power-path and DRC findings before powering battery, charger, solar, buzzer, or motor circuits.
+
+## Dashboard-controlled FPGA bench demo
+- [x] Add a separate Basys 3 NMEA-input top and USB-UART dashboard telemetry path.
+- [x] Reuse the same checksummed synthetic GPS replay controls for FPGA and ESP32 targets.
+- [x] Build the FPGA image with Vivado 2024.2; route timing closes at WNS +0.193 ns with no setup violations.
+- [ ] Program Basys 3, then verify LEDs and dashboard records on hardware.
+- [ ] Confirm cue timing and safety behavior on the FPGA with dummy loads/logic observation only.
+- Exit: repeatable dashboard-controlled NMEA replay with FPGA-originated telemetry and saved build reports.
 
 ## Milestone 7 — Controlled validation
 - [ ] Verify map completeness against site survey.

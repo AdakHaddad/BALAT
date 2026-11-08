@@ -1,5 +1,7 @@
 # PCB BALAT v1: panduan singkat
 
+> **HOLD — jangan fabrikasi atau nyalakan PCB v1 sebelum review power-path/DRC ditutup.** Profil firmware ESP32-C3 kini sesuai dengan net signal PCB; pinout bukan lagi kendala firmware. Ringkasan temuan: [`../../docs/PCB_LAYOUT_REVIEW_2026-11-08.md`](../../docs/PCB_LAYOUT_REVIEW_2026-11-08.md). Ikuti [`../../docs/ESP32_ASSEMBLY_DEMO.md`](../../docs/ESP32_ASSEMBLY_DEMO.md) untuk integrasi bench yang dibatasi.
+
 Per kalung ada 2 PCB, masing-masing 1 lapis tembaga, semua komponen tusuk (THT):
 
 | PCB | Kotak | Ukuran | Isi |
@@ -60,16 +62,23 @@ Semua lubang konektor berjarak 2,54 mm. Kabel boleh disolder langsung ke lubang 
 
 **Penting:** IN− TP4056 = B− (sebelum proteksi). PCB sengaja tidak menyambungkannya ke GND sistem (OUT−), supaya proteksi baterai tetap bekerja.
 
-**Saat upload program lewat USB ESP32:** matikan saklar ON/OFF, karena pin 5V ESP32 tersambung ke baterai.
+**Jangan sambungkan USB saat baterai/TP4056 terpasang atau saklar ON.** Net `VBAT` PCB terhubung ke pin `5V` modul Super Mini; USB VBUS dapat tersambung langsung ke rel baterai. Saklar OFF saja bukan pengganti revisi power-path dan verifikasi skematik modul yang dipakai. Untuk demo firmware sekarang gunakan Super Mini terpisah di breadboard dan daya USB saja.
 
 ## 4. Status pemeriksaan desain
 
-- DRC KiCad: **0 pelanggaran clearance, 0 sambungan terputus** di kedua papan.
-- Sisa peringatan hanya kosmetik (tulisan silkscreen menimpa pad) dan jarak "courtyard" yang rapat, misalnya R5/R7 berdiri di samping kaki R4/R6. Secara fisik masih muat.
-- Semua 74 pin skematik dicocokkan otomatis dengan pad PCB: **cocok semua**.
-- Jalur: lebar 0,8 mm (sinyal) dan 1,0 mm (daya), jarak antar-tembaga ≥ 0,45 mm, cocok untuk etsa setrika.
-- Pour GND mengisi area kosong supaya larutan etsa lebih hemat.
-- Area di bawah antena ESP32 sengaja dikosongkan dari tembaga.
+Pernyataan pemeriksaan lama pada bagian ini sudah usang. DRC baru dengan KiCad
+8.0.9 menemukan **7 error courtyard overlap** di PCB utama dan **2 error** di
+PCB daya; masing-masing papan masih melaporkan 0 item tidak tersambung. Jika
+peringatan ikut dihitung, ditemukan juga banyak masalah silkscreen dan
+definisi library footprint lokal. Lihat laporan ringkas di
+[`../../docs/PCB_LAYOUT_REVIEW_2026-11-08.md`](../../docs/PCB_LAYOUT_REVIEW_2026-11-08.md).
+
+Pemetaan firmware ESP-IDF untuk profil PCB kini cocok dengan netlist: GPIO3
+buzzer, GPIO4 motor, GPIO5 GPS power, GPIO6 tombol, GPIO10 LED, GPIO20 GPS TX
+(menuju UART RX). Tombol GPIO6 dipakai sebagai hold-to-enable cue saat demo
+bench; lepaskan tombol untuk mematikan keluaran. Tetap **HOLD** fabrikasi dan
+power-up sampai temuan jalur daya serta DRC ditinjau dan diselesaikan. Jangan
+sambungkan baterai/TP4056/solar atau aktuator sebelum power-path diverifikasi.
 
 ## 5. Mengubah desain
 

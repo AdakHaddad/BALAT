@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 import json
 import math
 import os
+import queue
 import re
 import socket
 import sys
@@ -28,7 +29,9 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -41,6 +44,10 @@ from poc.herdsync_dtn.uart_frame import (  # noqa: E402
 )
 
 RISK_NAMES = {0: "INVALID", 1: "SAFE", 2: "CAUTION", 3: "DANGER", 4: "COOLDOWN"}
+RISK_CODES = {name: code for code, name in RISK_NAMES.items()}
+ESP32_ORIGIN_LAT_DEG7 = -338250000
+ESP32_ORIGIN_LON_DEG7 = 186500000
+ESP32_COS_LAT_Q14 = 13611
 
 # Current live telemetry state (thread-safe)
 STATE_LOCK = threading.Lock()
@@ -60,6 +67,17 @@ CURRENT_STATE = {
     "fix_time_s": 0,
     "source": "WAITING",
     "link_status": "Select a telemetry source.",
+}
+MOCK_LOCK = threading.Lock()
+MOCK_CONTROL = {
+    "available": False,
+    "mode": "gps",
+    "running": False,
+    "index": 0,
+    "total": 0,
+    "interval": 0.1,
+    "reset_pending": False,
+    "stop_pending": False,
 }
 
 RECORD_FIELDS = (
@@ -184,6 +202,84 @@ class SessionRecorder:
 
 RECORDER = SessionRecorder(REPO / "build" / "poc_records")
 
+
+class SupabaseTelemetryWriter:
+    """Asynchronously append validated bridge samples to Supabase."""
+
+    def __init__(self, base_url: str, service_role_key: str, site_id: str = "default"):
+        self._endpoint = f"{base_url.rstrip('/')}/rest/v1/telemetry_events"
+        self._service_role_key = service_role_key
+        self._site_id = site_id
+        self._samples: queue.Queue[dict | None] = queue.Queue(maxsize=256)
+        self._worker = threading.Thread(target=self._run, name="supabase-telemetry", daemon=True)
+        self._worker.start()
+
+    @classmethod
+    def from_environment(cls) -> "SupabaseTelemetryWriter | None":
+        base_url = os.environ.get("BALAT_SUPABASE_URL", "").strip()
+        service_role_key = os.environ.get("BALAT_SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        if not base_url and not service_role_key:
+            return None
+        if not base_url or not service_role_key:
+            raise RuntimeError(
+                "BALAT_SUPABASE_URL and BALAT_SUPABASE_SERVICE_ROLE_KEY must be set together"
+            )
+        return cls(base_url, service_role_key, os.environ.get("BALAT_SUPABASE_SITE_ID", "default"))
+
+    @staticmethod
+    def row_from_state(state: dict, site_id: str) -> dict:
+        return {
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "site_id": site_id,
+            "source": str(state.get("source", "UNKNOWN")),
+            "seq": int(state.get("seq", 0)),
+            "x_cm": int(state.get("x_cm", 0)),
+            "y_cm": int(state.get("y_cm", 0)),
+            "dist_m": float(state.get("dist_m", 0.0)),
+            "risk": int(state.get("risk", 0)),
+            "risk_name": str(state.get("risk_name", "INVALID")),
+            "speed_kmh": float(state.get("speed_kmh", 0.0)),
+            "approaching": bool(state.get("approaching", False)),
+            "cue_active": state.get("cue_active"),
+            "cooldown": bool(state.get("cooldown", False)),
+            "battery_mv": int(state.get("battery_mv", 0)),
+            "quality": int(state.get("quality", 0)),
+            "fix_time_s": int(state.get("fix_time_s", 0)),
+            "link_status": str(state.get("link_status", "")),
+        }
+
+    def submit(self, state: dict) -> None:
+        try:
+            self._samples.put_nowait(self.row_from_state(state, self._site_id))
+        except queue.Full:
+            print("Supabase telemetry queue full; dropping sample", file=sys.stderr)
+
+    def _run(self) -> None:
+        while True:
+            sample = self._samples.get()
+            if sample is None:
+                return
+            request = Request(
+                self._endpoint,
+                data=json.dumps(sample).encode("utf-8"),
+                headers={
+                    "apikey": self._service_role_key,
+                    "Authorization": f"Bearer {self._service_role_key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=minimal",
+                },
+                method="POST",
+            )
+            try:
+                with urlopen(request, timeout=10):
+                    pass
+            except (HTTPError, URLError, TimeoutError) as exc:
+                print(f"Supabase telemetry write failed: {exc}", file=sys.stderr)
+
+
+SUPABASE_WRITER: SupabaseTelemetryWriter | None = None
+
+
 # The loaded OSM-derived segments are a dashboard reference layer only. The
 # current Basys3 UART bitstream uses the single synthetic segment below; it does
 # not load data/road_segments.csv at runtime.
@@ -244,6 +340,8 @@ def publish_state(update: dict) -> None:
         CURRENT_STATE.update(update)
         snapshot = dict(CURRENT_STATE)
     RECORDER.record(snapshot)
+    if SUPABASE_WRITER is not None:
+        SUPABASE_WRITER.submit(snapshot)
 
 
 def set_transport_status(source: str, message: str) -> None:
@@ -251,6 +349,43 @@ def set_transport_status(source: str, message: str) -> None:
     with STATE_LOCK:
         CURRENT_STATE["source"] = source
         CURRENT_STATE["link_status"] = message
+
+
+def mock_gps_status() -> dict:
+    with MOCK_LOCK:
+        control = dict(MOCK_CONTROL)
+    return {
+        "available": control["available"],
+        "mode": control["mode"],
+        "running": control["running"],
+        "index": control["index"],
+        "total": control["total"],
+        "interval": control["interval"],
+    }
+
+
+def invalidate_esp32_state(message: str) -> None:
+    """Fail closed in the browser when ESP32 decision logs stop arriving."""
+    publish_state({
+        "risk": 0,
+        "risk_name": "INVALID",
+        "approaching": False,
+        "cue_active": False,
+        "cooldown": False,
+        "fix_valid": False,
+        "quality": 0,
+        "source": "ESP32_UART",
+        "link_status": message,
+    })
+
+
+def invalidate_basys3_state(message: str) -> None:
+    publish_state({
+        "risk": 0, "risk_name": "INVALID", "approaching": False,
+        "cue_active": None, "cooldown": False, "fix_valid": False,
+        "map_valid": True, "quality": 0, "source": "BASYS3_NMEA_UART",
+        "link_status": message,
+    })
 
 
 def demo_road_distance_cm(x_cm: int, y_cm: int) -> float:
@@ -273,7 +408,7 @@ def state_from_uart_record(record: dict, previous: dict) -> dict:
     seq = int(record["seq"])
     previous_seq = int(previous.get("seq", 0))
     seq_delta = seq - previous_seq
-    if (previous.get("source") == "BASYS3_UART"
+    if (previous.get("source") in ("BASYS3_UART", "BASYS3_NMEA_UART")
             and "dist_m" in previous and seq_delta > 0):
         dx_cm = x_cm - int(previous["x_cm"])
         dy_cm = y_cm - int(previous["y_cm"])
@@ -301,6 +436,95 @@ def state_from_uart_record(record: dict, previous: dict) -> dict:
         "source": "BASYS3_UART",
         "link_status": "Receiving validated FPGA UART records.",
     }
+
+
+def run_basys3_nmea_telemetry(port: str, baud: int, interval: float = 0.1) -> None:
+    """Send dashboard replay NMEA to the FPGA and read its HerdSync records."""
+    try:
+        import serial
+    except ImportError:
+        set_transport_status("BASYS3_NMEA_UART", "pyserial missing: python3 -m pip install pyserial")
+        return
+
+    trace = _load_esp32_mock_trace()
+    with MOCK_LOCK:
+        MOCK_CONTROL.update({"available": False, "mode": "mock", "running": False,
+                             "index": 0, "total": len(trace), "interval": interval,
+                             "reset_pending": False, "stop_pending": False})
+    while True:
+        try:
+            serial_port = serial.Serial(port, baud, timeout=0.05, write_timeout=1)
+        except serial.SerialException as exc:
+            set_transport_status("BASYS3_NMEA_UART", f"FPGA UART unavailable: {exc}; retrying")
+            invalidate_basys3_state(f"FPGA UART unavailable: {exc}; dashboard state forced INVALID.")
+            time.sleep(1.0)
+            continue
+
+        parser = FrameParser()
+        with MOCK_LOCK:
+            MOCK_CONTROL["available"] = True
+        set_transport_status("BASYS3_NMEA_UART", f"Connected to {port}; dashboard mock NMEA input enabled.")
+        next_fix = time.monotonic()
+        last_record_at = time.monotonic()
+        stale_published = False
+        previous = {"source": "BASYS3_NMEA_UART", "seq": 0}
+        try:
+            while True:
+                chunk = serial_port.read(512)
+                if chunk:
+                    for frame in parser.feed(chunk):
+                        if frame.frame_type != TYPE_RECORD:
+                            continue
+                        try:
+                            record = decode_record_payload(frame.payload)
+                        except ValueError:
+                            continue
+                        with STATE_LOCK:
+                            previous = dict(CURRENT_STATE)
+                        update = state_from_uart_record(record, previous)
+                        update["source"] = "BASYS3_NMEA_UART"
+                        update["fix_valid"] = int(record["risk"]) != 0
+                        # Existing FPGA UART records omit map-valid and cue-active.
+                        update["map_valid"] = None
+                        update["link_status"] = "Dashboard NMEA → FPGA parser/risk pipeline → UART telemetry."
+                        publish_state(update)
+                        last_record_at = time.monotonic()
+                        stale_published = False
+
+                with MOCK_LOCK:
+                    running = bool(MOCK_CONTROL["running"])
+                    trace_index = int(MOCK_CONTROL["index"])
+                    fix_interval = float(MOCK_CONTROL["interval"])
+                    reset_pending = bool(MOCK_CONTROL["reset_pending"])
+                    MOCK_CONTROL["reset_pending"] = False
+                    MOCK_CONTROL["stop_pending"] = False
+                if reset_pending:
+                    trace_index = 0
+                    with MOCK_LOCK:
+                        MOCK_CONTROL["index"] = 0
+                    next_fix = time.monotonic()
+                if running and trace_index < len(trace) and time.monotonic() >= next_fix:
+                    x_cm, y_cm = trace[trace_index]
+                    for command in nmea_commands_for_local_fix(x_cm, y_cm, datetime.now(timezone.utc)):
+                        # FPGA parser consumes raw NMEA, unlike the ESP32 console protocol.
+                        raw_sentence = command.removeprefix("NMEA ")
+                        serial_port.write(raw_sentence.encode("ascii"))
+                    with MOCK_LOCK:
+                        MOCK_CONTROL["index"] = trace_index + 1
+                        if MOCK_CONTROL["index"] >= MOCK_CONTROL["total"]:
+                            MOCK_CONTROL["running"] = False
+                    next_fix = time.monotonic() + fix_interval
+                if time.monotonic() - last_record_at > 3.0 and not stale_published:
+                    invalidate_basys3_state("No FPGA telemetry for 3 seconds; displayed state forced INVALID.")
+                    stale_published = True
+        except serial.SerialException as exc:
+            set_transport_status("BASYS3_NMEA_UART", f"FPGA UART read/write failed: {exc}; reconnecting")
+            invalidate_basys3_state(f"FPGA serial fault: {exc}; dashboard state forced INVALID.")
+        finally:
+            with MOCK_LOCK:
+                MOCK_CONTROL["available"] = False
+            serial_port.close()
+        time.sleep(1.0)
 
 
 def run_uart_telemetry(port: str, baud: int) -> None:
@@ -339,6 +563,204 @@ def run_uart_telemetry(port: str, baud: int) -> None:
         except serial.SerialException as exc:
             set_transport_status("BASYS3_UART", f"UART read failed: {exc}; reconnecting")
         finally:
+            serial_port.close()
+        time.sleep(1.0)
+
+
+def esp32_log_to_state(line: str) -> dict | None:
+    """Convert one ESP32 key/value CSV decision log into the dashboard schema."""
+    if not line.startswith("event="):
+        return None
+    fields = {}
+    for item in line.strip().split(","):
+        key, separator, value = item.partition("=")
+        if separator:
+            fields[key] = value
+    risk_name = fields.get("risk", "INVALID")
+    if risk_name not in RISK_CODES or "x_cm" not in fields or "dist2_cm2" not in fields:
+        return None
+    try:
+        x_cm = int(fields["x_cm"])
+        y_cm = int(fields["y_cm"])
+        distance_cm = math.sqrt(max(0, int(fields["dist2_cm2"])))
+        speed_cm_s = math.sqrt(max(0, int(fields.get("speed2_cm2_s2", "0"))))
+        fix_valid = fields.get("fix_valid", "0") == "1"
+        map_valid = fields.get("map_valid", "0") == "1"
+        stale = fields.get("stale", "0") == "1"
+        seq = int(fields.get("fix_seq", fields.get("rx_seq", "0")))
+        cue_active = fields.get("cue_active", "0") == "1" and fix_valid and map_valid and not stale
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not fix_valid or not map_valid or stale:
+        risk_name = "INVALID"
+    return {
+        "x_cm": x_cm,
+        "y_cm": y_cm,
+        "dist_m": round(distance_cm / 100.0, 2),
+        "risk": RISK_CODES[risk_name],
+        "risk_name": risk_name,
+        "speed_kmh": round(speed_cm_s * 0.036, 2),
+        "approaching": fields.get("approaching", "0") == "1",
+        "cue_active": cue_active,
+        "cooldown": fields.get("cooldown", "0") == "1",
+        "fix_valid": fix_valid,
+        "map_valid": map_valid,
+        "battery_mv": 0,
+        "quality": 0,
+        "seq": seq,
+        "fix_time_s": 0,
+        "source": "ESP32_UART",
+        "link_status": f"ESP32 bench log · {fields.get('event', 'decision')} · fix {'valid' if fix_valid else 'invalid'} · cues remain hardware gated.",
+    }
+
+
+def _nmea_sentence(body: str) -> str:
+    checksum = 0
+    for char in body:
+        checksum ^= ord(char)
+    return f"${body}*{checksum:02X}\r\n"
+
+
+def _format_nmea_coordinate(deg7: int, latitude: bool) -> tuple[str, str]:
+    hemisphere = ("N" if deg7 >= 0 else "S") if latitude else ("E" if deg7 >= 0 else "W")
+    absolute = abs(deg7)
+    degrees, remainder = divmod(absolute, 10_000_000)
+    minutes = remainder * 60 / 10_000_000
+    degree_width = 2 if latitude else 3
+    return f"{degrees:0{degree_width}d}{minutes:09.6f}", hemisphere
+
+
+def nmea_commands_for_local_fix(x_cm: int, y_cm: int, at: datetime) -> tuple[str, str]:
+    """Make checksummed GGA/RMC commands for one local-coordinate replay fix."""
+    lat_deg7 = ESP32_ORIGIN_LAT_DEG7 + round(y_cm * 65_536 / 72_872)
+    lon_deg7 = ESP32_ORIGIN_LON_DEG7 + round(
+        x_cm * 65_536 * 16_384 / (72_872 * ESP32_COS_LAT_Q14)
+    )
+    lat, ns = _format_nmea_coordinate(lat_deg7, True)
+    lon, ew = _format_nmea_coordinate(lon_deg7, False)
+    clock = at.strftime("%H%M%S") + f".{at.microsecond // 10000:02d}"
+    date = at.strftime("%d%m%y")
+    gga = _nmea_sentence(f"GPGGA,{clock},{lat},{ns},{lon},{ew},1,08,1.0,0.0,M,0.0,M,,")
+    rmc = _nmea_sentence(f"GPRMC,{clock},A,{lat},{ns},{lon},{ew},1.9,0.0,{date},,,A")
+    return f"NMEA {gga}", f"NMEA {rmc}"
+
+
+def _load_esp32_mock_trace() -> list[tuple[int, int]]:
+    path = REPO / "data" / "demo_trace.csv"
+    with path.open(newline="", encoding="utf-8") as stream:
+        return [(int(row["x_cm"]), int(row["y_cm"])) for row in csv.DictReader(stream)]
+
+
+def run_esp32_telemetry(port: str, baud: int, mock_gps: bool = False, interval: float = 0.1) -> None:
+    """Bridge ESP32 logs and dashboard-controlled mock NMEA through firmware parsing."""
+    try:
+        import serial
+    except ImportError:
+        set_transport_status("ESP32_UART", "pyserial missing: python3 -m pip install pyserial")
+        return
+
+    trace = _load_esp32_mock_trace()
+    with MOCK_LOCK:
+        MOCK_CONTROL.update({
+            "available": False,
+            "mode": "mock" if mock_gps else "gps",
+            "running": bool(mock_gps),
+            "index": 0,
+            "total": len(trace),
+            "interval": interval,
+            "reset_pending": False,
+            "stop_pending": False,
+        })
+    while True:
+        try:
+            serial_port = serial.Serial(port, baud, timeout=0.05, write_timeout=1)
+        except serial.SerialException as exc:
+            set_transport_status("ESP32_UART", f"UART unavailable: {exc}; retrying")
+            invalidate_esp32_state(f"ESP32 UART unavailable: {exc}; displayed state forced INVALID.")
+            time.sleep(1.0)
+            continue
+
+        with MOCK_LOCK:
+            MOCK_CONTROL["available"] = True
+        mode = "dashboard-controlled mock NMEA or GNSS"
+        set_transport_status("ESP32_UART", f"Connected to {port}; {mode}.")
+        next_fix = time.monotonic()
+        device_mock_mode = False
+        was_running = False
+        last_decision_at = time.monotonic()
+        stale_published = False
+        input_buffer = bytearray()
+        try:
+            while True:
+                chunk = serial_port.read(512)
+                if chunk:
+                    input_buffer.extend(chunk)
+                    while b"\n" in input_buffer:
+                        raw_line, _, rest = input_buffer.partition(b"\n")
+                        input_buffer = bytearray(rest)
+                        line = raw_line.decode("ascii", errors="ignore").strip()
+                        update = esp32_log_to_state(line)
+                        if update is not None:
+                            publish_state(update)
+                            last_decision_at = time.monotonic()
+                            stale_published = False
+
+                with MOCK_LOCK:
+                    running = bool(MOCK_CONTROL["running"])
+                    trace_index = int(MOCK_CONTROL["index"])
+                    fix_interval = float(MOCK_CONTROL["interval"])
+                    reset_pending = bool(MOCK_CONTROL["reset_pending"])
+                    stop_pending = bool(MOCK_CONTROL["stop_pending"])
+                    MOCK_CONTROL["reset_pending"] = False
+                    MOCK_CONTROL["stop_pending"] = False
+
+                if reset_pending:
+                    if not device_mock_mode:
+                        serial_port.write(b"MOCK START\r\n")
+                        device_mock_mode = True
+                    serial_port.write(b"MOCK RESET\r\n")
+                    next_fix = time.monotonic()
+                if stop_pending:
+                    serial_port.write(b"MOCK STOP\r\n")
+                    device_mock_mode = False
+                elif running and not device_mock_mode:
+                    serial_port.write(b"MOCK START\r\n")
+                    device_mock_mode = True
+                    next_fix = time.monotonic()
+                elif not running and was_running and device_mock_mode:
+                    serial_port.write(b"MOCK PAUSE\r\n")
+
+                if not stop_pending and running and trace_index < len(trace) and time.monotonic() >= next_fix:
+                    x_cm, y_cm = trace[trace_index]
+                    at = datetime.now(timezone.utc)
+                    for command in nmea_commands_for_local_fix(x_cm, y_cm, at):
+                        serial_port.write(command.encode("ascii"))
+                    with MOCK_LOCK:
+                        MOCK_CONTROL["index"] = trace_index + 1
+                        complete = MOCK_CONTROL["index"] >= MOCK_CONTROL["total"]
+                        if complete:
+                            MOCK_CONTROL["running"] = False
+                    next_fix = time.monotonic() + fix_interval
+                    if complete:
+                        serial_port.write(b"MOCK PAUSE\r\n")
+                        set_transport_status(
+                            "ESP32_UART",
+                            "Mock NMEA trace complete; receiving board decisions. No GPS receiver data was used.",
+                        )
+                elif not stop_pending and running and trace_index >= len(trace):
+                    with MOCK_LOCK:
+                        MOCK_CONTROL["running"] = False
+                    serial_port.write(b"MOCK PAUSE\r\n")
+                was_running = running
+                if not stale_published and time.monotonic() - last_decision_at > 3.0:
+                    invalidate_esp32_state("No ESP32 decision log for 3 seconds; displayed state forced INVALID.")
+                    stale_published = True
+        except serial.SerialException as exc:
+            set_transport_status("ESP32_UART", f"UART read/write failed: {exc}; reconnecting")
+            invalidate_esp32_state(f"ESP32 serial fault: {exc}; displayed state forced INVALID.")
+        finally:
+            with MOCK_LOCK:
+                MOCK_CONTROL["available"] = False
             serial_port.close()
         time.sleep(1.0)
 
@@ -702,6 +1124,8 @@ class DemoHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(encoded)
 
@@ -718,8 +1142,13 @@ class DemoHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             with STATE_LOCK:
-                payload = json.dumps(CURRENT_STATE)
+                state = dict(CURRENT_STATE)
+            if state.get("source") in ("ESP32_UART", "BASYS3_NMEA_UART"):
+                state["mock_gps"] = mock_gps_status()
+            payload = json.dumps(state)
             self.wfile.write(payload.encode("utf-8"))
+        elif url.path == "/api/mock":
+            self._send_json(200, mock_gps_status())
         elif url.path == "/api/map":
             self._send_json(200, MAP_DATA)
         elif url.path == "/api/recording":
@@ -742,7 +1171,7 @@ class DemoHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlparse(self.path)
-        if url.path not in ("/api/recording/start", "/api/recording/stop"):
+        if url.path not in ("/api/recording/start", "/api/recording/stop", "/api/mock/control"):
             self._send_json(404, {"error": "not found"})
             return
 
@@ -755,13 +1184,58 @@ class DemoHandler(BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise ValueError("request body must be an object")
 
-            if url.path == "/api/recording/start":
+            if url.path == "/api/mock/control":
+                action = body.get("action")
+                if action not in ("start", "pause", "reset", "stop", "speed"):
+                    raise ValueError("action must be start, pause, reset, stop, or speed")
+                requested_interval = body.get("interval")
+                with MOCK_LOCK:
+                    if not MOCK_CONTROL["available"]:
+                        raise RuntimeError("ESP32 serial bridge is not connected")
+                    if requested_interval is not None:
+                        try:
+                            requested_interval = float(requested_interval)
+                        except (TypeError, ValueError) as exc:
+                            raise ValueError("interval must be between 0.05 and 2 seconds") from exc
+                        if not 0.05 <= requested_interval <= 2.0:
+                            raise ValueError("interval must be between 0.05 and 2 seconds")
+                        MOCK_CONTROL["interval"] = requested_interval
+                    if action == "start":
+                        MOCK_CONTROL["mode"] = "mock"
+                        if MOCK_CONTROL["index"] >= MOCK_CONTROL["total"]:
+                            MOCK_CONTROL["index"] = 0
+                            MOCK_CONTROL["reset_pending"] = True
+                        MOCK_CONTROL["running"] = True
+                    elif action == "pause":
+                        MOCK_CONTROL["mode"] = "mock"
+                        MOCK_CONTROL["running"] = False
+                    elif action == "reset":
+                        MOCK_CONTROL["mode"] = "mock"
+                        MOCK_CONTROL["index"] = 0
+                        MOCK_CONTROL["running"] = False
+                        MOCK_CONTROL["reset_pending"] = True
+                    elif action == "stop":
+                        MOCK_CONTROL["mode"] = "gps"
+                        MOCK_CONTROL["running"] = False
+                        MOCK_CONTROL["index"] = 0
+                        MOCK_CONTROL["reset_pending"] = False
+                        MOCK_CONTROL["stop_pending"] = True
+                result = mock_gps_status()
+            elif url.path == "/api/recording/start":
                 result = RECORDER.start(body.get("label", "poc"))
             else:
                 result = RECORDER.stop()
             self._send_json(200, result)
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
             self._send_json(400, {"error": str(exc)})
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def log_message(self, format, *args):
         # Silence standard HTTP logs for clean terminal
@@ -785,6 +1259,18 @@ def main():
     parser.add_argument(
         "--serial", metavar="PORT",
         help="Read live, framed telemetry from the Basys3 HerdSync USB-UART bridge.",
+    )
+    parser.add_argument(
+        "--esp32-serial", metavar="PORT",
+        help="Read ESP32 key/value decision logs and expose them through the dashboard API.",
+    )
+    parser.add_argument(
+        "--basys3-nmea-serial", metavar="PORT",
+        help="Stream dashboard mock NMEA to the Basys3 and read its FPGA telemetry records.",
+    )
+    parser.add_argument(
+        "--mock-gps", action="store_true",
+        help="With --esp32-serial, stream a synthetic checksummed NMEA trace through the ESP32 firmware parser.",
     )
     parser.add_argument("--baud", type=int, default=115200, help="UART baud rate (default: 115200)")
     parser.add_argument(
@@ -813,14 +1299,37 @@ def main():
         parser.error("--interval must be positive")
     if args.baud <= 0:
         parser.error("--baud must be positive")
-    if args.serial and args.simulate:
-        parser.error("choose either --serial or --simulate")
+    if sum(bool(value) for value in (args.serial, args.esp32_serial, args.basys3_nmea_serial, args.simulate)) > 1:
+        parser.error("choose one telemetry source: --serial, --esp32-serial, --basys3-nmea-serial, or --simulate")
+    if args.mock_gps and not args.esp32_serial:
+        parser.error("--mock-gps currently requires --esp32-serial; FPGA replay is controlled in the dashboard")
 
-    global RECORDER, MAP_DATA
+    global RECORDER, MAP_DATA, SUPABASE_WRITER
     RECORDER = SessionRecorder(args.record_dir)
     MAP_DATA = load_reference_map(args.map_csv, args.map_manifest)
+    try:
+        SUPABASE_WRITER = SupabaseTelemetryWriter.from_environment()
+    except RuntimeError as exc:
+        parser.error(str(exc))
 
-    if args.serial:
+    if args.esp32_serial:
+        telemetry_thread = threading.Thread(
+            target=run_esp32_telemetry,
+            args=(args.esp32_serial, args.baud, args.mock_gps, args.interval),
+            daemon=True,
+        )
+        telemetry_thread.start()
+        suffix = " with mock NMEA replay" if args.mock_gps else ""
+        source_description = f"ESP32 USB serial on {args.esp32_serial} at {args.baud} baud{suffix}"
+    elif args.basys3_nmea_serial:
+        telemetry_thread = threading.Thread(
+            target=run_basys3_nmea_telemetry,
+            args=(args.basys3_nmea_serial, args.baud, args.interval),
+            daemon=True,
+        )
+        telemetry_thread.start()
+        source_description = f"Basys3 NMEA demo on {args.basys3_nmea_serial} at {args.baud} baud"
+    elif args.serial:
         telemetry_thread = threading.Thread(
             target=run_uart_telemetry, args=(args.serial, args.baud), daemon=True,
         )
@@ -843,6 +1352,7 @@ def main():
     print(f" Active FPGA map: {ACTIVE_DEMO_MAP['name']} (one fixed segment)")
     print(f" Reference map: {'loaded' if MAP_DATA['reference']['available'] else 'unavailable'}")
     print(f" POC CSV records: {args.record_dir}")
+    print(f" Supabase telemetry: {'enabled' if SUPABASE_WRITER else 'disabled'}")
     print("=" * 60)
     print(" Press Ctrl+C to stop.")
 
