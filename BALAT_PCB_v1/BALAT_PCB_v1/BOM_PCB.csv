@@ -1,0 +1,33 @@
+Papan,Ref,Komponen,Footprint,Jumlah per kalung,Jumlah 2 kalung,Catatan
+PCB UTAMA (kotak 1),BZ1,"Buzzer aktif 3,3V",Buzzer_12x9.5RM7.6,1,2,
+PCB UTAMA (kotak 1),C1,470uF 10V,CP_Radial_D8.0mm_P3.50mm,1,2,
+PCB UTAMA (kotak 1),C2,100nF,C_Disc_D5.0mm_W2.5mm_P5.00mm,1,2,
+PCB UTAMA (kotak 1),D2,1N5819,D_DO-41_SOD81_P7.62mm_Horizontal,1,2,
+PCB UTAMA (kotak 1),D3,LED,LED_D3.0mm,1,2,
+PCB UTAMA (kotak 1),J1,Ke kotak 2,PinHeader_1x06_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB UTAMA (kotak 1),J2,Motor PS,PinHeader_1x02_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB UTAMA (kotak 1),J3,Tombol lapor,PinHeader_1x02_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB UTAMA (kotak 1),Q1,S8050,TO-92_Inline_Wide,1,2,
+PCB UTAMA (kotak 1),Q2,2N2222,TO-92_Inline_Wide,1,2,
+PCB UTAMA (kotak 1),R1,100k,R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical,1,2,
+PCB UTAMA (kotak 1),R10,220,R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical,1,2,
+PCB UTAMA (kotak 1),R2,100k,R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical,1,2,
+PCB UTAMA (kotak 1),R3,4k7,R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal,1,2,
+PCB UTAMA (kotak 1),R4,1k,R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal,1,2,
+PCB UTAMA (kotak 1),R5,10k,R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical,1,2,
+PCB UTAMA (kotak 1),R6,470,R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal,1,2,
+PCB UTAMA (kotak 1),R7,10k,R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical,1,2,
+PCB UTAMA (kotak 1),U1,ESP32-C3 Super Mini,ESP32-C3_SuperMini,1,2,
+PCB DAYA (kotak 2),C4,100nF,C_Disc_D5.0mm_W2.5mm_P5.00mm,1,2,
+PCB DAYA (kotak 2),D1,1N5819,D_DO-41_SOD81_P7.62mm_Horizontal,1,2,
+PCB DAYA (kotak 2),F1,Polyfuse 1A,C_Disc_D7.5mm_W2.5mm_P5.00mm,1,2,
+PCB DAYA (kotak 2),J1,Ke kotak 1,PinHeader_1x06_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB DAYA (kotak 2),JGPS,GPS NEO-6M,PinHeader_1x03_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB DAYA (kotak 2),JPV,Panel surya,PinHeader_1x02_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB DAYA (kotak 2),JSW,Saklar ON/OFF,PinHeader_1x02_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB DAYA (kotak 2),JT,DS18B20 (kabel),PinHeader_1x03_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB DAYA (kotak 2),JTI,TP4056 IN,PinHeader_1x02_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB DAYA (kotak 2),JTO,TP4056 OUT,PinHeader_1x02_P2.54mm_Vertical,1,2,konektor kabel (lubang 1 mm)
+PCB DAYA (kotak 2),Q3,S8550,TO-92_Inline_Wide,1,2,
+PCB DAYA (kotak 2),R8,1k,R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal,1,2,
+PCB DAYA (kotak 2),R9,10k,R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical,1,2,
