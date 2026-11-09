@@ -1,11 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "host/ble_hs.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -30,6 +37,56 @@ static size_t replay_index;
 static bool replay_running;
 static bool mock_mode;
 static QueueHandle_t command_queue;
+static uint16_t ble_status_handle;
+static uint16_t ble_connection = BLE_HS_CONN_HANDLE_NONE;
+static const ble_uuid128_t balat_service_uuid = BLE_UUID128_INIT(0xa1,0x96,0x8b,0x2f,0x52,0x7c,0x3a,0x8e,0x0d,0x4f,0x15,0x1b,0x01,0x00,0x51,0x7f);
+static const ble_uuid128_t balat_control_uuid = BLE_UUID128_INIT(0xa1,0x96,0x8b,0x2f,0x52,0x7c,0x3a,0x8e,0x0d,0x4f,0x15,0x1b,0x02,0x00,0x51,0x7f);
+static const ble_uuid128_t balat_status_uuid = BLE_UUID128_INIT(0xa1,0x96,0x8b,0x2f,0x52,0x7c,0x3a,0x8e,0x0d,0x4f,0x15,0x1b,0x03,0x00,0x51,0x7f);
+
+static int ble_access(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    (void)conn; (void)arg;
+    if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+        uint8_t bytes[9]; uint16_t len = 0;
+        if (OS_MBUF_PKTLEN(ctxt->om) != sizeof(bytes) || ble_hs_mbuf_to_flat(ctxt->om, bytes, sizeof(bytes), &len) != 0 || len != sizeof(bytes) || bytes[0] != 0x10) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        int32_t x = (int32_t)((uint32_t)bytes[1] | ((uint32_t)bytes[2] << 8) | ((uint32_t)bytes[3] << 16) | ((uint32_t)bytes[4] << 24));
+        int32_t y = (int32_t)((uint32_t)bytes[5] | ((uint32_t)bytes[6] << 8) | ((uint32_t)bytes[7] << 16) | ((uint32_t)bytes[8] << 24));
+        if (x < -BALAT_MAX_COORD_CM || x > BALAT_MAX_COORD_CM || y < -BALAT_MAX_COORD_CM || y > BALAT_MAX_COORD_CM) return BLE_ATT_ERR_UNLIKELY;
+        char command[LINE_CAP]; (void)snprintf(command, sizeof(command), "BLEFIX %ld %ld", (long)x, (long)y);
+        return xQueueSend(command_queue, command, 0) == pdTRUE ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR && attr == ble_status_handle) {
+        const balat_engine_status_t *s = &engine.status; uint8_t body[19] = {1};
+        uint32_t x=(uint32_t)s->x_cm, y=(uint32_t)s->y_cm;
+        uint32_t distance=(uint32_t)(sqrt((double)s->dist2_cm2)); uint32_t seq=s->fix_seq;
+        for (int i=0;i<4;i++) { body[1+i]=(uint8_t)(x>>(8*i)); body[5+i]=(uint8_t)(y>>(8*i)); body[9+i]=(uint8_t)(distance>>(8*i)); body[13+i]=(uint8_t)(seq>>(8*i)); }
+        body[17]=(uint8_t)s->risk_state; body[18]=(uint8_t)((s->fix_valid?1u:0u)|(s->map_valid?2u:0u)|(s->cue_active?4u:0u));
+        return os_mbuf_append(ctxt->om, body, sizeof(body)) == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    return BLE_ATT_ERR_UNLIKELY;
+}
+
+static const struct ble_gatt_svc_def balat_services[] = {{.type=BLE_GATT_SVC_TYPE_PRIMARY,.uuid=&balat_service_uuid.u,.characteristics=(struct ble_gatt_chr_def[]){{.uuid=&balat_control_uuid.u,.access_cb=ble_access,.flags=BLE_GATT_CHR_F_WRITE},{.uuid=&balat_status_uuid.u,.access_cb=ble_access,.flags=BLE_GATT_CHR_F_READ|BLE_GATT_CHR_F_NOTIFY,.val_handle=&ble_status_handle},{0}}},{0}};
+
+static void ble_advertise(void);
+static int ble_gap_event(struct ble_gap_event *event, void *arg)
+{
+    (void)arg;
+    if (event->type == BLE_GAP_EVENT_CONNECT && event->connect.status == 0) ble_connection = event->connect.conn_handle;
+    else if (event->type == BLE_GAP_EVENT_DISCONNECT) { ble_connection = BLE_HS_CONN_HANDLE_NONE; ble_advertise(); }
+    return 0;
+}
+
+static void ble_advertise(void)
+{
+    struct ble_hs_adv_fields fields = {0}; struct ble_gap_adv_params params = {0};
+    const char *name = "BALAT-C3"; fields.name=(uint8_t *)name; fields.name_len=strlen(name); fields.name_is_complete=1; fields.flags=BLE_HS_ADV_F_DISC_GEN|BLE_HS_ADV_F_BREDR_UNSUP;
+    (void)ble_gap_adv_set_fields(&fields); params.conn_mode=BLE_GAP_CONN_MODE_UND; params.disc_mode=BLE_GAP_DISC_MODE_GEN;
+    (void)ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC,NULL,BLE_HS_FOREVER,&params,ble_gap_event,NULL);
+}
+
+static void ble_sync(void) { (void)ble_hs_id_infer_auto(0,NULL); ble_advertise(); }
+static void ble_host(void *arg) { (void)arg; nimble_port_run(); nimble_port_freertos_deinit(); }
 
 static const balat_engine_config_t ENGINE_CONFIG = {
     .gate = {.stale_ms = 3000u, .max_gap_ms = 5000u,
@@ -134,7 +191,8 @@ static void process_command(char *line)
         else if (arg != NULL && strcmp(arg, "STOP") == 0) replay_running = false;
         else if (arg != NULL && strcmp(arg, "RESET") == 0) replay_index = 0u;
         else puts("ERR REPLAY START|STOP|RESET");
-    } else if (strcmp(command, "FIX") == 0) {
+    } else if (strcmp(command, "FIX") == 0 || strcmp(command, "BLEFIX") == 0) {
+        if (strcmp(command, "BLEFIX") == 0) { mock_mode = true; set_gps_power(false); }
         char *x = strtok_r(NULL, " \r\n", &save);
         char *y = strtok_r(NULL, " \r\n", &save);
         char *x_end = NULL;
@@ -287,6 +345,19 @@ void app_main(void)
         ESP_LOGE(TAG, "fixture map validation failed; cue remains inhibited");
     }
     reset_engine();
+    esp_err_t nvs_rc = nvs_flash_init();
+    if (nvs_rc == ESP_ERR_NVS_NO_FREE_PAGES || nvs_rc == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        (void)nvs_flash_erase();
+        nvs_rc = nvs_flash_init();
+    }
+    if (nvs_rc == ESP_OK && nimble_port_init() == ESP_OK) {
+        ble_svc_gap_init(); ble_svc_gatt_init();
+        (void)ble_svc_gap_device_name_set("BALAT-C3");
+        if (ble_gatts_count_cfg(balat_services) == 0 && ble_gatts_add_svcs(balat_services) == 0) {
+            ble_hs_cfg.sync_cb = ble_sync;
+            nimble_port_freertos_init(ble_host);
+        } else ESP_LOGE(TAG, "BLE GATT service registration failed");
+    } else ESP_LOGE(TAG, "BLE initialization failed; USB bench mode remains available");
     print_help();
     xTaskCreate(usb_console_task, "balat_usb_console", 3072, NULL, 5, NULL);
     while (true) {
@@ -309,6 +380,7 @@ void app_main(void)
         outputs_apply();
         if (engine.decision_pending) {
             log_decision(engine.event_pending ? engine.event : "DECISION");
+            if (ble_connection != BLE_HS_CONN_HANDLE_NONE && ble_status_handle != 0u) (void)ble_gatts_chr_updated(ble_status_handle);
             balat_engine_clear_decision(&engine);
         }
         vTaskDelay(pdMS_TO_TICKS(100));

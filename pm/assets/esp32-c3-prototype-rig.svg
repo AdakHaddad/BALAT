@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">BALAT ESP32-C3 supervised prototype rig</title>
+  <desc id="desc">An isometric electronics bench rig with an ESP32-C3 board, GNSS receiver, protected dummy cue drivers, status LEDs, manual disable switch, and USB replay logger.</desc>
+  <defs>
+    <linearGradient id="bench" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f0e8"/>
+      <stop offset="1" stop-color="#d8d1c5"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#707b82"/>
+      <stop offset=".48" stop-color="#384249"/>
+      <stop offset="1" stop-color="#1b2228"/>
+    </linearGradient>
+    <linearGradient id="pcb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#267b68"/>
+      <stop offset="1" stop-color="#123e3d"/>
+    </linearGradient>
+    <linearGradient id="black" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#39444a"/>
+      <stop offset="1" stop-color="#151b20"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feGaussianBlur stdDeviation="11"/>
+    </filter>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <style>
+      .edge{stroke:#11191e;stroke-width:2;stroke-linejoin:round}
+      .fine{fill:none;stroke:#9ba7ad;stroke-width:1.5;stroke-linecap:round}
+      .wire{fill:none;stroke:#d69b58;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+      .wire2{fill:none;stroke:#6bb6a5;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+      .label{fill:#c5cfce;font:600 14px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:1.1px}
+      .micro{fill:#d7dfdc;font:500 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.7px}
+      .darkmicro{fill:#273238;font:700 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.7px}
+    </style>
+  </defs>
+
+  <ellipse cx="588" cy="686" rx="475" ry="38" fill="#0b1014" opacity=".42" filter="url(#shadow)"/>
+
+  <!-- bench plate, feet, corner screws, cable trough -->
+  <path class="edge" fill="#252e34" d="M92 528 598 355 1110 504 604 694Z"/>
+  <path class="edge" fill="url(#metal)" d="M92 528 604 694 604 713 92 546Z"/>
+  <path class="edge" fill="#171e23" d="M604 694 1110 504 1110 522 604 713Z"/>
+  <path class="edge" fill="#4a555b" d="M112 515 600 350 1090 497 604 675Z"/>
+  <path fill="#20282e" d="M139 515 600 362 1062 500 604 661Z"/>
+  <path class="fine" d="M177 525 600 386 1020 514"/>
+  <path class="fine" d="M206 551 600 423 992 545"/>
+  <path class="fine" d="M248 580 600 466 945 575"/>
+  <g fill="#0d1317" stroke="#9ba7ad" stroke-width="1.5">
+    <circle cx="142" cy="520" r="7"/><circle cx="603" cy="665" r="7"/>
+    <circle cx="1061" cy="500" r="7"/><circle cx="601" cy="369" r="7"/>
+  </g>
+  <path class="edge" fill="#11181d" d="M284 584 602 480 918 579 603 677Z"/>
+  <path class="fine" d="M306 589 603 493 894 584"/>
+  <text class="label" x="431" y="630" transform="rotate(-17 431 630)">SUPERVISED DUMMY OUTPUT RIG</text>
+
+  <!-- rear instrument rail and standoffs -->
+  <path class="edge" fill="url(#metal)" d="M216 181 246 171 246 529 216 539Z"/>
+  <path class="edge" fill="#20292f" d="M246 171 270 179 270 521 246 529Z"/>
+  <path class="edge" fill="url(#metal)" d="M924 178 952 186 952 469 924 480Z"/>
+  <path class="edge" fill="#20292f" d="M952 186 976 177 976 459 952 469Z"/>
+  <path class="edge" fill="#59656b" d="M236 193 941 193 956 202 250 202Z"/>
+  <path class="edge" fill="#1d262c" d="M250 202 956 202 956 212 250 212Z"/>
+  <g fill="#b9c3c4" stroke="#152027" stroke-width="1">
+    <circle cx="230" cy="201" r="5"/><circle cx="948" cy="201" r="5"/>
+  </g>
+
+  <!-- GNSS receiver tray and antenna puck -->
+  <path class="edge" fill="url(#black)" d="M270 219 538 219 584 235 316 235Z"/>
+  <path class="edge" fill="#1a2329" d="M316 235 584 235 584 316 316 316Z"/>
+  <path class="edge" fill="#303c43" d="M270 219 316 235 316 316 270 299Z"/>
+  <path class="edge" fill="#2b8a73" d="M339 239 528 239 556 248 366 248Z"/>
+  <path class="edge" fill="#176052" d="M366 248 556 248 556 289 366 289Z"/>
+  <path class="edge" fill="#68b8a3" d="M339 239 366 248 366 289 339 280Z"/>
+  <circle class="edge" cx="452" cy="209" r="26" fill="#68747a"/>
+  <ellipse cx="452" cy="204" rx="23" ry="8" fill="#c6ceca"/>
+  <circle cx="452" cy="204" r="7" fill="#243036" stroke="#d7dfdc" stroke-width="1"/>
+  <text class="label" x="337" y="309">GNSS / NMEA UART</text>
+  <text class="micro" x="366" y="269">FIX • QUALITY • AGE</text>
+
+  <!-- ESP32-C3 board -->
+  <path class="edge" fill="url(#pcb)" d="M586 279 827 279 886 298 645 298Z"/>
+  <path class="edge" fill="#123e3d" d="M645 298 886 298 886 407 645 407Z"/>
+  <path class="edge" fill="#1d594f" d="M586 279 645 298 645 407 586 386Z"/>
+  <path class="edge" fill="#253138" d="M684 309 821 309 844 316 708 316Z"/>
+  <path class="edge" fill="#10171b" d="M708 316 844 316 844 370 708 370Z"/>
+  <path class="edge" fill="#59666b" d="M720 327 833 327 833 359 720 359Z"/>
+  <text class="darkmicro" x="735" y="348">ESP32-C3</text>
+  <g fill="#d3a85d" stroke="#1b2529" stroke-width="1">
+    <circle cx="614" cy="296" r="4"/><circle cx="614" cy="319" r="4"/>
+    <circle cx="614" cy="342" r="4"/><circle cx="614" cy="365" r="4"/>
+    <circle cx="857" cy="316" r="4"/><circle cx="857" cy="339" r="4"/>
+    <circle cx="857" cy="362" r="4"/><circle cx="857" cy="385" r="4"/>
+  </g>
+  <text class="label" x="672" y="394">PARSER • MAP • RISK</text>
+
+  <!-- protected driver tray -->
+  <path class="edge" fill="url(#black)" d="M365 371 566 371 609 385 407 385Z"/>
+  <path class="edge" fill="#182126" d="M407 385 609 385 609 469 407 469Z"/>
+  <path class="edge" fill="#303b42" d="M365 371 407 385 407 469 365 453Z"/>
+  <path class="edge" fill="#27353a" d="M431 404 485 404 496 408 442 408Z"/>
+  <path class="edge" fill="#11181d" d="M442 408 496 408 496 431 442 431Z"/>
+  <path class="edge" fill="#68747a" d="M519 404 563 404 575 408 531 408Z"/>
+  <path class="edge" fill="#11181d" d="M531 408 575 408 575 431 531 431Z"/>
+  <g fill="#c69a55" stroke="#1b2529" stroke-width="1">
+    <circle cx="421" cy="394" r="4"/><circle cx="421" cy="450" r="4"/>
+    <circle cx="594" cy="394" r="4"/><circle cx="594" cy="450" r="4"/>
+  </g>
+  <text class="label" x="421" y="456">PROTECTED DRIVERS</text>
+  <text class="micro" x="447" y="423">BUZZER / MOTOR</text>
+
+  <!-- status LED panel -->
+  <path class="edge" fill="url(#black)" d="M664 433 840 433 878 445 702 445Z"/>
+  <path class="edge" fill="#1a2329" d="M702 445 878 445 878 506 702 506Z"/>
+  <path class="edge" fill="#303c43" d="M664 433 702 445 702 506 664 493Z"/>
+  <circle cx="746" cy="464" r="13" fill="#d84e45" opacity=".25" filter="url(#glow)"/>
+  <circle cx="746" cy="464" r="8" fill="#d84e45" stroke="#f2d3cc" stroke-width="1"/>
+  <circle cx="786" cy="464" r="13" fill="#e1ae48" opacity=".25" filter="url(#glow)"/>
+  <circle cx="786" cy="464" r="8" fill="#e1ae48" stroke="#f2e3b3" stroke-width="1"/>
+  <circle cx="826" cy="464" r="13" fill="#68bd8c" opacity=".25" filter="url(#glow)"/>
+  <circle cx="826" cy="464" r="8" fill="#68bd8c" stroke="#d7f0dc" stroke-width="1"/>
+  <text class="micro" x="732" y="490">INVALID  CAUTION  SAFE</text>
+
+  <!-- manual disable switch -->
+  <path class="edge" fill="#39464c" d="M885 377 1012 336 1052 348 924 391Z"/>
+  <path class="edge" fill="#1a2329" d="M924 391 1052 348 1052 404 924 449Z"/>
+  <path class="edge" fill="#5b686e" d="M885 377 924 391 924 449 885 435Z"/>
+  <circle cx="970" cy="391" r="22" fill="#252e34" stroke="#9ba7ad" stroke-width="2"/>
+  <path class="edge" fill="#d84e45" d="M965 385 1002 373 1007 382 970 394Z"/>
+  <text class="label" x="900" y="425" transform="rotate(-18 900 425)">CUE DISABLE</text>
+
+  <!-- buzzer and motor dummy loads -->
+  <path class="edge" fill="#59656b" d="M198 418 313 380 354 393 238 432Z"/>
+  <path class="edge" fill="#252e34" d="M238 432 354 393 354 465 238 504Z"/>
+  <path class="edge" fill="#758188" d="M198 418 238 432 238 504 198 490Z"/>
+  <path class="edge" fill="#1b2228" d="M227 445 329 411 329 445 227 479Z"/>
+  <g stroke="#aab5b6" stroke-width="2">
+    <path d="M239 445 239 478"/><path d="M253 440 253 474"/><path d="M267 435 267 469"/><path d="M281 430 281 464"/><path d="M295 426 295 459"/>
+  </g>
+  <text class="label" x="207" y="482" transform="rotate(-18 207 482)">DUMMY CUES</text>
+
+  <!-- USB logger / laptop-like recorder -->
+  <path class="edge" fill="#59666d" d="M477 501 748 414 827 438 554 529Z"/>
+  <path class="edge" fill="#1b242a" d="M554 529 827 438 827 509 554 604Z"/>
+  <path class="edge" fill="#303c43" d="M477 501 554 529 554 604 477 575Z"/>
+  <path class="edge" fill="#0d1418" d="M575 506 786 437 786 487 575 557Z"/>
+  <path class="edge" fill="#8ca29f" d="M601 514 759 462 759 479 601 531Z"/>
+  <text class="darkmicro" x="627" y="502" transform="rotate(-18 627 502)">USB TRACE LOGGER</text>
+  <path class="edge" fill="#b6c1bd" d="M793 466 817 458 817 474 793 482Z"/>
+  <circle cx="805" cy="470" r="3" fill="#68bd8c"/>
+
+  <!-- physical wires with connector ends -->
+  <path class="wire" d="M584 270 532 250 500 250"/>
+  <circle cx="500" cy="250" r="5" fill="#d69b58" stroke="#151d22" stroke-width="2"/>
+  <path class="wire" d="M645 379 594 421 575 421"/>
+  <circle cx="575" cy="421" r="5" fill="#d69b58" stroke="#151d22" stroke-width="2"/>
+  <path class="wire2" d="M886 352 930 338 963 338"/>
+  <circle cx="963" cy="338" r="5" fill="#6bb6a5" stroke="#151d22" stroke-width="2"/>
+  <path class="wire2" d="M846 402 877 418 900 418"/>
+  <circle cx="900" cy="418" r="5" fill="#6bb6a5" stroke="#151d22" stroke-width="2"/>
+  <path class="wire" d="M660 414 630 462 605 478"/>
+  <circle cx="605" cy="478" r="5" fill="#d69b58" stroke="#151d22" stroke-width="2"/>
+
+  <!-- restrained part labels -->
+  <text class="label" x="276" y="170">INPUT</text>
+  <text class="label" x="666" y="170">DECISION</text>
+  <text class="label" x="901" y="300">SAFE STOP</text>
+  <text class="label" x="459" y="348">DRIVER</text>
+  <text class="label" x="706" y="545">REPLAY / EVIDENCE</text>
+</svg>

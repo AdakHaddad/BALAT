@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">BALAT ESP32-C3 prototype wiring diagram</title>
+  <desc id="desc">Wiring diagram for an ESP32-C3 Super Mini, GNSS UART, status LEDs, manual disable switch, buzzer driver, vibration motor driver, flyback diode, and separate motor supply.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#26343b"/>
+    </marker>
+    <style>
+      .box{fill:#f4f0e8;stroke:#182329;stroke-width:3}
+      .board{fill:#216b5d;stroke:#102c2b;stroke-width:3}
+      .driver{fill:#e2e8e4;stroke:#182329;stroke-width:2}
+      .part{fill:#ffffff;stroke:#182329;stroke-width:2}
+      .power{fill:#f8dfc7;stroke:#8b4d2e;stroke-width:2}
+      .warn{fill:#fff0d6;stroke:#9b6424;stroke-width:2}
+      .wire{fill:none;stroke:#26343b;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+      .red{fill:none;stroke:#c94c49;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+      .black{fill:none;stroke:#151b20;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+      .orange{fill:none;stroke:#cc7b37;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+      .green{fill:none;stroke:#2c926c;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+      .blue{fill:none;stroke:#397bb5;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+      .title{font:700 28px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#182329;letter-spacing:1px}
+      .head{font:700 17px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#182329}
+      .text{font:500 14px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#26343b}
+      .small{font:500 12px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#26343b}
+      .pin{font:700 13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#f4f0e8}
+      .legend{font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#26343b}
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" fill="#d8d1c5"/>
+  <rect x="28" y="24" width="1344" height="852" rx="18" fill="#f4f0e8" stroke="#182329" stroke-width="3"/>
+  <text x="66" y="76" class="title">BALAT ESP32-C3 SUPERVISED BENCH WIRING</text>
+  <text x="66" y="104" class="text">Dummy outputs only • verify the actual Super Mini pinout and module voltage before powering</text>
+
+  <!-- ESP32 board -->
+  <rect x="540" y="185" width="310" height="390" rx="14" class="board"/>
+  <text x="595" y="231" class="head" fill="#f4f0e8">ESP32-C3</text>
+  <text x="617" y="254" class="small" fill="#d9e8e2">SUPER MINI</text>
+  <rect x="625" y="290" width="145" height="72" rx="5" fill="#102c2b"/>
+  <text x="650" y="332" class="pin">MCU</text>
+  <text x="574" y="405" class="pin">3V3</text>
+  <text x="574" y="446" class="pin">GND</text>
+  <text x="574" y="487" class="pin">GNSS_RX</text>
+  <text x="574" y="528" class="pin">GNSS_TX*</text>
+  <text x="772" y="405" class="pin">LEDs</text>
+  <text x="772" y="446" class="pin">DISABLE</text>
+  <text x="772" y="487" class="pin">BUZZER</text>
+  <text x="772" y="528" class="pin">MOTOR</text>
+  <circle cx="550" cy="400" r="7" fill="#f8dfc7"/><circle cx="550" cy="441" r="7" fill="#151b20"/>
+  <circle cx="550" cy="482" r="7" fill="#397bb5"/><circle cx="550" cy="523" r="7" fill="#397bb5"/>
+  <circle cx="840" cy="400" r="7" fill="#2c926c"/><circle cx="840" cy="441" r="7" fill="#cc7b37"/>
+  <circle cx="840" cy="482" r="7" fill="#c94c49"/><circle cx="840" cy="523" r="7" fill="#c94c49"/>
+  <text x="585" y="612" class="small" fill="#d9e8e2">USB-C: firmware + USB log</text>
+
+  <!-- GNSS -->
+  <rect x="92" y="168" width="295" height="190" rx="12" class="part"/>
+  <text x="122" y="207" class="head">GNSS MODULE</text>
+  <text x="122" y="234" class="small">NEO-M8N preferred</text>
+  <rect x="145" y="264" width="180" height="44" rx="4" fill="#277c68" stroke="#182329" stroke-width="2"/>
+  <circle cx="236" cy="251" r="19" fill="#adb9b8" stroke="#182329" stroke-width="2"/>
+  <text x="122" y="335" class="small">TX → GNSS_RX</text>
+  <text x="250" y="335" class="small">3V3 / GND</text>
+  <path class="blue" d="M387 280 460 280 460 482 550 482"/>
+  <path class="orange" d="M387 320 430 320 430 400 550 400"/>
+  <path class="black" d="M387 348 415 348 415 441 550 441"/>
+  <text x="404" y="269" class="small">UART</text>
+  <text x="421" y="392" class="small">3.3 V</text>
+  <text x="420" y="460" class="small">GND</text>
+
+  <!-- power -->
+  <rect x="96" y="465" width="290" height="162" rx="12" class="power"/>
+  <text x="126" y="505" class="head">USB / 5 V POWER</text>
+  <text x="126" y="534" class="small">ESP32-C3 + GNSS only</text>
+  <text x="126" y="563" class="small">Motor supply separate</text>
+  <circle cx="165" cy="598" r="9" fill="#c94c49"/><circle cx="315" cy="598" r="9" fill="#151b20"/>
+  <text x="181" y="603" class="small">+5 V / common GND</text>
+  <path class="orange" d="M386 540 465 540 465 400 550 400"/>
+  <path class="black" d="M386 588 485 588 485 441 550 441"/>
+  <rect x="108" y="650" width="267" height="70" rx="8" class="warn"/>
+  <text x="125" y="678" class="small">Add 100 µF + 100 nF</text>
+  <text x="125" y="699" class="small">near MCU/GNSS supply</text>
+
+  <!-- LEDs -->
+  <rect x="995" y="130" width="292" height="210" rx="12" class="part"/>
+  <text x="1026" y="170" class="head">STATUS LEDS</text>
+  <text x="1026" y="195" class="small">one 220 Ω resistor each</text>
+  <circle cx="1050" cy="240" r="13" fill="#d84e45" stroke="#182329" stroke-width="2"/>
+  <circle cx="1140" cy="240" r="13" fill="#e1ae48" stroke="#182329" stroke-width="2"/>
+  <circle cx="1230" cy="240" r="13" fill="#68bd8c" stroke="#182329" stroke-width="2"/>
+  <text x="1027" y="288" class="small">INVALID</text><text x="1112" y="288" class="small">CAUTION</text><text x="1207" y="288" class="small">SAFE</text>
+  <path class="green" d="M840 400 920 400 920 220 1037 220"/>
+  <path class="orange" d="M840 400 935 400 935 240 1127 240"/>
+  <path class="blue" d="M840 400 950 400 950 260 1217 260"/>
+  <path class="black" d="M1040 310 1040 325 1245 325 1245 310"/>
+
+  <!-- disable switch -->
+  <rect x="1000" y="390" width="280" height="128" rx="12" class="part"/>
+  <text x="1031" y="430" class="head">MANUAL DISABLE</text>
+  <circle cx="1080" cy="474" r="22" fill="#d84e45" stroke="#182329" stroke-width="3"/>
+  <text x="1118" y="479" class="small">GPIO input + pull-up</text>
+  <text x="1031" y="500" class="small">pressed = cue OFF</text>
+  <path class="orange" d="M840 441 960 441 960 474 1058 474"/>
+  <path class="black" d="M1080 496 1080 545 900 545 900 441 840 441"/>
+
+  <!-- driver area -->
+  <rect x="950" y="575" width="332" height="220" rx="12" class="driver"/>
+  <text x="980" y="612" class="head">PROTECTED DUMMY DRIVERS</text>
+  <text x="980" y="638" class="small">low-side switching; no direct GPIO load</text>
+  <rect x="982" y="670" width="128" height="74" rx="7" fill="#c7d0cd" stroke="#182329" stroke-width="2"/>
+  <text x="1000" y="700" class="small">Q1 S8050</text><text x="1000" y="723" class="small">BUZZER</text>
+  <rect x="1140" y="670" width="128" height="74" rx="7" fill="#c7d0cd" stroke="#182329" stroke-width="2"/>
+  <text x="1155" y="700" class="small">Q2 2N2222</text><text x="1155" y="723" class="small">MOTOR</text>
+  <path class="red" d="M840 482 900 482 900 690 982 690"/>
+  <path class="red" d="M840 523 920 523 920 710 1140 710"/>
+  <path class="black" d="M950 760 900 760 900 545 840 545"/>
+  <text x="883" y="778" class="small">common GND</text>
+
+  <!-- loads and motor power -->
+  <rect x="92" y="755" width="530" height="92" rx="12" class="part"/>
+  <text x="122" y="790" class="head">DUMMY LOADS</text>
+  <text x="122" y="820" class="small">Active buzzer 3.3 V   |   vibration motor 3 V</text>
+  <path class="red" d="M1110 707 760 707 760 810 622 810"/>
+  <path class="red" d="M1268 707 1278 707 1278 830 622 830"/>
+  <text x="650" y="804" class="small">to loads</text>
+  <rect x="670" y="690" width="205" height="105" rx="10" class="power"/>
+  <text x="692" y="720" class="head">SEPARATE 3 V</text>
+  <text x="692" y="747" class="small">MOTOR SUPPLY</text>
+  <text x="692" y="774" class="small">share GND only</text>
+  <path class="orange" d="M775 690 775 655 1060 655 1060 670"/>
+  <path class="black" d="M720 795 720 760 950 760"/>
+
+  <!-- diode callout -->
+  <rect x="410" y="680" width="225" height="112" rx="10" class="warn"/>
+  <text x="433" y="712" class="head">MOTOR FLYBACK</text>
+  <text x="433" y="739" class="small">1N4007 across motor</text>
+  <text x="433" y="766" class="small">stripe → motor +</text>
+  <path class="orange" d="M635 735 670 735"/>
+  <path class="black" d="M635 766 670 766"/>
+
+  <!-- legend -->
+  <rect x="950" y="50" width="336" height="60" rx="8" fill="#eef2ed" stroke="#182329" stroke-width="2"/>
+  <line x1="970" y1="72" x2="1020" y2="72" class="orange"/><text x="1032" y="77" class="legend">3V3 / + supply</text>
+  <line x1="970" y1="94" x2="1020" y2="94" class="black"/><text x="1032" y="99" class="legend">GND</text>
+  <line x1="1140" y1="72" x2="1190" y2="72" class="blue"/><text x="1200" y="77" class="legend">UART / signal</text>
+  <line x1="1140" y1="94" x2="1190" y2="94" class="red"/><text x="1200" y="99" class="legend">cue output</text>
+
+  <rect x="66" y="840" width="1268" height="22" rx="5" fill="#182329"/>
+  <text x="82" y="856" font-size="12" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" fill="#f4f0e8">SAFETY: RESET = CUE OFF • TEST LEDS FIRST • NEVER DRIVE MOTOR OR SPEAKER DIRECTLY FROM ESP32 GPIO</text>
+</svg>

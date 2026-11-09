@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" role="img" aria-labelledby="title desc">
+  <title id="title">BALAT validation stack</title>
+  <desc id="desc">An isometric laboratory rack with five removable validation trays: GNSS input, map and geometry, risk state, cue safety, and replay logging.</desc>
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f0e8"/>
+      <stop offset="1" stop-color="#d8d1c5"/>
+    </linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#697179"/>
+      <stop offset=".45" stop-color="#343c43"/>
+      <stop offset="1" stop-color="#1b2228"/>
+    </linearGradient>
+    <linearGradient id="tray" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#445058"/>
+      <stop offset="1" stop-color="#20282e"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e6a668"/>
+      <stop offset=".5" stop-color="#9a5736"/>
+      <stop offset="1" stop-color="#5a3025"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    <style>
+      .edge{stroke:#12181d;stroke-width:2;stroke-linejoin:round}
+      .fine{fill:none;stroke:#9ba7ad;stroke-width:1.5;stroke-linecap:round}
+      .tick{stroke:#d9e0df;stroke-width:2;stroke-linecap:round}
+      .muted{fill:#9ba7ad;font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:1.2px}
+      .micro{fill:#c5cfce;font:500 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.8px}
+    </style>
+  </defs>
+
+  <ellipse cx="505" cy="555" rx="395" ry="33" fill="#0b1014" opacity=".45" filter="url(#shadow)"/>
+
+  <!-- base plate, feet, and corner hardware -->
+  <path class="edge" fill="#252e34" d="M140 477 512 358 886 468 510 594Z"/>
+  <path class="edge" fill="url(#steel)" d="M140 477 510 594 510 610 140 492Z"/>
+  <path class="edge" fill="#171e23" d="M510 594 886 468 886 485 510 610Z"/>
+  <path class="edge" fill="#4a555b" d="M160 468 512 356 866 463 510 575Z"/>
+  <path fill="#20282e" d="M179 466 512 365 845 464 510 566Z"/>
+  <path class="fine" d="M200 472 511 378 823 470"/>
+  <path class="fine" d="M226 494 511 408 798 493"/>
+  <path class="fine" d="M256 518 511 441 768 517"/>
+  <g fill="#0d1317" stroke="#9ba7ad" stroke-width="1.5">
+    <circle cx="185" cy="477" r="7"/><circle cx="510" cy="574" r="7"/>
+    <circle cx="843" cy="465" r="7"/><circle cx="510" cy="369" r="7"/>
+  </g>
+  <g fill="#11181d" stroke="#77848a" stroke-width="1">
+    <circle cx="196" cy="484" r="3"/><circle cx="511" cy="584" r="3"/>
+    <circle cx="830" cy="469" r="3"/><circle cx="512" cy="380" r="3"/>
+  </g>
+
+  <!-- guide posts and cross braces -->
+  <path class="edge" fill="url(#steel)" d="M206 129 237 119 237 476 206 486Z"/>
+  <path class="edge" fill="#20292f" d="M237 119 267 128 267 466 237 476Z"/>
+  <path class="edge" fill="url(#steel)" d="M793 120 823 130 823 463 793 475Z"/>
+  <path class="edge" fill="#20292f" d="M823 130 851 120 851 452 823 463Z"/>
+  <path class="edge" fill="#59656b" d="M227 142 808 142 822 151 242 151Z"/>
+  <path class="edge" fill="#1d262c" d="M242 151 822 151 822 162 242 162Z"/>
+  <path class="edge" fill="#59656b" d="M228 445 809 445 823 454 242 454Z"/>
+  <path class="edge" fill="#1d262c" d="M242 454 823 454 823 465 242 465Z"/>
+  <g fill="#b9c3c4" stroke="#152027" stroke-width="1">
+    <circle cx="220" cy="151" r="5"/><circle cx="815" cy="151" r="5"/>
+    <circle cx="220" cy="454" r="5"/><circle cx="815" cy="454" r="5"/>
+  </g>
+
+  <!-- GNSS receiver tray -->
+  <g>
+    <path class="edge" fill="url(#tray)" d="M248 161 793 161 850 180 303 180Z"/>
+    <path class="edge" fill="#1a2329" d="M303 180 850 180 850 225 303 225Z"/>
+    <path class="edge" fill="#303c43" d="M248 161 303 180 303 225 248 205Z"/>
+    <path class="edge" fill="url(#paper)" d="M363 170 521 170 547 178 390 178Z"/>
+    <path class="edge" fill="#68747a" d="M390 178 547 178 547 205 390 205Z"/>
+    <path class="edge" fill="#b4c0bf" d="M363 170 390 178 390 205 363 197Z"/>
+    <path fill="#d4d8d2" d="M385 174 512 174 528 179 400 179Z"/>
+    <path class="edge" fill="#26353c" d="M607 170 706 170 732 178 632 178Z"/>
+    <path class="edge" fill="#10181d" d="M632 178 732 178 732 202 632 202Z"/>
+    <path fill="#83d5c2" d="M646 182h16v12h-16zM671 182h16v12h-16zM696 182h16v12h-16z"/>
+    <path class="fine" d="M327 194h30m-30 9h20m290-13h12m-12 8h12"/>
+    <circle cx="810" cy="194" r="10" fill="#63e6be" opacity=".28" filter="url(#glow)"/>
+    <circle cx="810" cy="194" r="5" fill="#9fffe0"/>
+    <path class="fine" d="M280 168h35m-35 7h22"/>
+  </g>
+
+  <!-- map and geometry tray -->
+  <g>
+    <path class="edge" fill="url(#tray)" d="M248 226 793 226 850 245 303 245Z"/>
+    <path class="edge" fill="#1a2329" d="M303 245 850 245 850 304 303 304Z"/>
+    <path class="edge" fill="#303c43" d="M248 226 303 245 303 304 248 284Z"/>
+    <path class="edge" fill="#c4b8a4" d="M370 238 615 238 678 258 429 258Z"/>
+    <path fill="#eee6d4" d="M392 241 603 241 650 256 437 256Z"/>
+    <path fill="none" stroke="#6b8f91" stroke-width="7" stroke-linecap="round" d="m419 248 56 3 35-8 43 7 47-3"/>
+    <path fill="none" stroke="#c26b4a" stroke-width="4" stroke-linecap="round" d="m458 252 30-7 32 8 34-4"/>
+    <g fill="#384b51">
+      <circle cx="401" cy="247" r="4"/><circle cx="520" cy="245" r="4"/><circle cx="613" cy="250" r="4"/>
+    </g>
+    <path class="edge" fill="#667278" d="M700 240 772 240 797 248 725 248Z"/>
+    <path class="edge" fill="#1b2429" d="M725 248 797 248 797 276 725 276Z"/>
+    <path class="edge" fill="#a5b0ae" d="M700 240 725 248 725 276 700 268Z"/>
+    <g class="tick"><path d="M714 247v17m12-14v17m12-14v17m12-14v17m12-14v17"/></g>
+    <path class="fine" d="M326 268h27m-27 9h17m421 4h38"/>
+  </g>
+
+  <!-- risk/state tray -->
+  <g>
+    <path class="edge" fill="url(#tray)" d="M248 305 793 305 850 324 303 324Z"/>
+    <path class="edge" fill="#1a2329" d="M303 324 850 324 850 383 303 383Z"/>
+    <path class="edge" fill="#303c43" d="M248 305 303 324 303 383 248 363Z"/>
+    <path class="edge" fill="#171f24" d="M388 318 538 318 580 332 430 332Z"/>
+    <path class="edge" fill="#394850" d="M430 332 580 332 580 370 430 370Z"/>
+    <path class="edge" fill="#879291" d="M388 318 430 332 430 370 388 356Z"/>
+    <circle cx="490" cy="348" r="18" fill="#12191e" stroke="#b7c1bd" stroke-width="2"/>
+    <path fill="none" stroke="#9fffe0" stroke-width="4" stroke-linecap="round" d="M490 348 501 335"/>
+    <circle cx="490" cy="348" r="3" fill="#d9e6de"/>
+    <path class="fine" d="M470 323v7m10-7v7m10-7v7m10-7v7m10-7v7"/>
+    <path class="edge" fill="#566269" d="M626 316 746 316 780 328 660 328Z"/>
+    <path class="edge" fill="#182126" d="M660 328 780 328 780 365 660 365Z"/>
+    <path fill="#263a40" d="M679 335h82v20h-82z"/>
+    <path fill="#72dfbe" d="M686 340h15v3h-15zM708 340h34v3h-34zM686 348h28v3h-28zM718 348h24v3h-24z"/>
+    <g fill="#d5ddda"><circle cx="649" cy="340" r="3"/><circle cx="649" cy="352" r="3"/><circle cx="649" cy="364" r="3"/></g>
+  </g>
+
+  <!-- cue safety tray -->
+  <g>
+    <path class="edge" fill="url(#tray)" d="M248 384 793 384 850 403 303 403Z"/>
+    <path class="edge" fill="#1a2329" d="M303 403 850 403 850 462 303 462Z"/>
+    <path class="edge" fill="#303c43" d="M248 384 303 403 303 462 248 442Z"/>
+    <path class="edge" fill="#5c6a6f" d="M380 395 500 395 536 407 415 407Z"/>
+    <path class="edge" fill="#202b31" d="M415 407 536 407 536 441 415 441Z"/>
+    <path class="edge" fill="#a6b0ae" d="M380 395 415 407 415 441 380 429Z"/>
+    <circle cx="454" cy="422" r="11" fill="#11191e" stroke="#c8d4cf" stroke-width="2"/>
+    <circle cx="454" cy="422" r="5" fill="#ffb56f"/>
+    <circle cx="454" cy="422" r="15" fill="#ffb56f" opacity=".18" filter="url(#glow)"/>
+    <path class="edge" fill="#734132" d="M609 392 711 392 746 404 645 404Z"/>
+    <path class="edge" fill="#2a1716" d="M645 404 746 404 746 442 645 442Z"/>
+    <path class="edge" fill="#c4774d" d="M609 392 645 404 645 442 609 430Z"/>
+    <path fill="#f1c38a" d="M630 406h10v20h-10zM650 410h10v20h-10z"/>
+    <path class="fine" d="M330 426h31m-31 9h22m350-8h32"/>
+  </g>
+
+  <!-- logging tray and spool -->
+  <g>
+    <path class="edge" fill="url(#tray)" d="M248 463 793 463 850 482 303 482Z"/>
+    <path class="edge" fill="#1a2329" d="M303 482 850 482 850 527 303 527Z"/>
+    <path class="edge" fill="#303c43" d="M248 463 303 482 303 527 248 508Z"/>
+    <path class="edge" fill="#39454b" d="M382 474 520 474 552 484 414 484Z"/>
+    <path class="edge" fill="#1b252b" d="M414 484 552 484 552 510 414 510Z"/>
+    <path class="edge" fill="#a5b0ae" d="M382 474 414 484 414 510 382 500Z"/>
+    <path fill="#79d3c3" d="M429 490h102v3H429zM429 497h76v3h-76zM429 504h91v3h-91z"/>
+    <path class="edge" fill="url(#copper)" d="M625 472 695 472 721 481 651 481Z"/>
+    <path class="edge" fill="#633625" d="M651 481 721 481 721 516 651 516Z"/>
+    <path class="edge" fill="#dc9661" d="M625 472 651 481 651 516 625 507Z"/>
+    <ellipse cx="674" cy="472" rx="24" ry="8" fill="#d88f5c" stroke="#2b1718" stroke-width="2"/>
+    <ellipse cx="674" cy="472" rx="8" ry="3" fill="#292022"/>
+    <path class="fine" d="M329 495h31m-31 9h22m356 3h34"/>
+  </g>
+
+  <!-- GNSS antenna puck and signal ribs -->
+  <g>
+    <ellipse cx="510" cy="91" rx="82" ry="24" fill="#10171c" opacity=".5" filter="url(#glow)"/>
+    <path class="edge" fill="#313c43" d="M430 84 510 59 590 84 510 109Z"/>
+    <path class="edge" fill="url(#paper)" d="M449 80 510 61 571 80 510 99Z"/>
+    <path class="edge" fill="#7b888b" d="M449 80 510 99 510 112 449 93Z"/>
+    <path class="edge" fill="#3c484e" d="M510 99 571 80 571 93 510 112Z"/>
+    <path class="fine" d="M482 70 538 87M470 74 526 91M494 66 550 83"/>
+    <path class="tick" d="M510 40v-20m-26 24-12-18m52 18 12-18"/>
+    <circle cx="510" cy="91" r="4" fill="#9fffe0"/>
+  </g>
+
+  <!-- small side service panel, handle, and connectors -->
+  <path class="edge" fill="#222c32" d="M181 277 224 291 224 370 181 356Z"/>
+  <path class="edge" fill="#5c686d" d="M190 292 211 299 211 320 190 313Z"/>
+  <path class="fine" d="M190 331 211 338M190 340 211 347"/>
+  <circle cx="201" cy="361" r="4" fill="#ff7b5f"/>
+  <path class="edge" fill="#b1bab6" d="M166 392 197 402 197 416 166 406Z"/>
+  <path class="edge" fill="#303b42" d="M173 398 191 404 191 410 173 404Z"/>
+  <path class="edge" fill="#1b2328" d="M858 268 884 260 884 348 858 357Z"/>
+  <g fill="#d7a56f"><circle cx="871" cy="280" r="4"/><circle cx="871" cy="298" r="4"/><circle cx="871" cy="316" r="4"/></g>
+  <path fill="none" stroke="#e0a16d" stroke-width="3" d="M879 278c25 15 28 35 11 52"/>
+
+  <!-- restrained caption markers -->
+  <g class="muted">
+    <text x="66" y="106">01 / FIX</text>
+    <text x="66" y="260">02 / MAP</text>
+    <text x="66" y="378">03 / RISK</text>
+    <text x="66" y="488">04 / CUE</text>
+  </g>
+  <g class="micro">
+    <text x="725" y="106">REPLAYABLE</text>
+    <text x="726" y="122">FAIL-SAFE</text>
+  </g>
+</svg>

@@ -81,6 +81,23 @@ class SessionRecorderTest(unittest.TestCase):
             recorder.stop()
 
 
+class SupabaseTelemetryWriterTest(unittest.TestCase):
+    def test_row_maps_validated_state_to_database_shape(self):
+        state = {
+            "source": "SIMULATION", "seq": 7, "x_cm": -300, "y_cm": 25,
+            "dist_m": 3.0, "risk": 2, "risk_name": "CAUTION",
+            "speed_kmh": 2.5, "approaching": True, "cue_active": False,
+            "cooldown": False, "battery_mv": 3720, "quality": 100,
+            "fix_time_s": 12, "link_status": "ok",
+        }
+        row = web_demo.SupabaseTelemetryWriter.row_from_state(state, "kupang")
+        self.assertEqual(row["site_id"], "kupang")
+        self.assertEqual(row["seq"], 7)
+        self.assertEqual(row["risk_name"], "CAUTION")
+        self.assertEqual(row["cue_active"], False)
+        self.assertIn("T", row["captured_at"])
+
+
 class UartDashboardStateTest(unittest.TestCase):
     def test_fpga_record_maps_to_live_dashboard_state(self):
         previous = {

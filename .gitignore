@@ -14,3 +14,6 @@ pitchppt_revised.pdf
 pitchppt_revised.pptx
 scripts/generate_pitch_deck.py
 ppt-master/
+.env
+.env.*
+!.env.example

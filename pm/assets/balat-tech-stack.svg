@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 700" role="img" aria-labelledby="title desc">
+  <title id="title">BALAT technology stack</title>
+  <desc id="desc">A clean isometric technology rack showing the local runtime path from GNSS through validation, map geometry, risk state, cue safety, and replay logging, with a separate status-only HerdSync-DTN pod.</desc>
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f1e8"/>
+      <stop offset="1" stop-color="#d9d1c4"/>
+    </linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6f7a81"/>
+      <stop offset=".5" stop-color="#3b454b"/>
+      <stop offset="1" stop-color="#1b2228"/>
+    </linearGradient>
+    <linearGradient id="tray" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#48555d"/>
+      <stop offset="1" stop-color="#20282e"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e4a36a"/>
+      <stop offset=".5" stop-color="#a45b3a"/>
+      <stop offset="1" stop-color="#5a3026"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <style>
+      .edge{stroke:#11191e;stroke-width:2;stroke-linejoin:round}
+      .fine{fill:none;stroke:#9ca8ad;stroke-width:1.5;stroke-linecap:round}
+      .ink{fill:#d7dfdc;font:700 13px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:1px}
+      .micro{fill:#bdc9c8;font:500 10px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.7px}
+      .dark{fill:#273238;font:700 11px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.7px}
+      .signal{fill:none;stroke:#d69b58;stroke-width:3;stroke-linecap:round}
+      .status{fill:#69bd8d;stroke:#d8f0db;stroke-width:1}
+    </style>
+  </defs>
+
+  <rect width="1100" height="700" fill="#d9d1c4"/>
+  <rect x="28" y="24" width="1044" height="650" rx="18" fill="url(#paper)" stroke="#11191e" stroke-width="3"/>
+  <text x="66" y="70" fill="#182329" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="25" font-weight="700" letter-spacing="1">BALAT TECHNOLOGY STACK</text>
+  <text x="66" y="96" fill="#415057" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13">LOCAL RISK PATH • FAIL-SAFE OUTPUT • REPLAYABLE EVIDENCE</text>
+
+  <!-- base and frame -->
+  <ellipse cx="479" cy="621" rx="355" ry="28" fill="#0b1014" opacity=".38" filter="url(#shadow)"/>
+  <path class="edge" fill="#252e34" d="M119 520 478 402 844 508 482 640Z"/>
+  <path class="edge" fill="url(#steel)" d="M119 520 482 640 482 657 119 537Z"/>
+  <path class="edge" fill="#171e23" d="M482 640 844 508 844 525 482 657Z"/>
+  <path class="edge" fill="#4a555b" d="M141 509 478 398 822 499 482 623Z"/>
+  <path fill="#20282e" d="M169 508 478 410 794 502 482 608Z"/>
+  <path class="fine" d="M190 521 478 430 767 516"/>
+  <path class="fine" d="M221 544 478 463 738 539"/>
+  <g fill="#0d1317" stroke="#9ba7ad" stroke-width="1.5">
+    <circle cx="153" cy="512" r="7"/><circle cx="482" cy="614" r="7"/>
+    <circle cx="791" cy="503" r="7"/><circle cx="478" cy="414" r="7"/>
+  </g>
+  <path class="edge" fill="url(#steel)" d="M195 150 224 140 224 514 195 524Z"/>
+  <path class="edge" fill="#20292f" d="M224 140 247 148 247 506 224 514Z"/>
+  <path class="edge" fill="url(#steel)" d="M745 144 773 153 773 493 745 504Z"/>
+  <path class="edge" fill="#20292f" d="M773 153 796 145 796 484 773 493Z"/>
+  <path class="edge" fill="#59656b" d="M215 163 757 163 773 172 230 172Z"/>
+  <path class="edge" fill="#1d262c" d="M230 172 773 172 773 182 230 182Z"/>
+
+  <!-- tray 1 input -->
+  <path class="edge" fill="url(#tray)" d="M238 190 745 190 800 207 293 207Z"/>
+  <path class="edge" fill="#1a2329" d="M293 207 800 207 800 256 293 256Z"/>
+  <path class="edge" fill="#303c43" d="M238 190 293 207 293 256 238 239Z"/>
+  <path class="edge" fill="#2c8a73" d="M342 202 496 202 520 209 366 209Z"/>
+  <path class="edge" fill="#176052" d="M366 209 520 209 520 237 366 237Z"/>
+  <path class="edge" fill="#68b8a3" d="M342 202 366 209 366 237 342 230Z"/>
+  <circle class="edge" cx="578" cy="199" r="20" fill="#6a767b"/>
+  <ellipse cx="578" cy="195" rx="18" ry="6" fill="#c6ceca"/>
+  <text class="ink" x="314" y="249">01  GNSS INPUT</text>
+  <text class="micro" x="562" y="235">UART • CHECKSUM • FIX AGE</text>
+
+  <!-- tray 2 quality -->
+  <path class="edge" fill="url(#tray)" d="M238 265 745 265 800 282 293 282Z"/>
+  <path class="edge" fill="#1a2329" d="M293 282 800 282 800 331 293 331Z"/>
+  <path class="edge" fill="#303c43" d="M238 265 293 282 293 331 238 314Z"/>
+  <path class="edge" fill="#59656b" d="M345 278 530 278 552 285 367 285Z"/>
+  <path class="edge" fill="#1c252a" d="M367 285 552 285 552 313 367 313Z"/>
+  <circle cx="626" cy="297" r="8" fill="#d84e45"/><circle cx="656" cy="297" r="8" fill="#e1ae48"/><circle class="status" cx="686" cy="297" r="8"/>
+  <text class="ink" x="314" y="324">02  QUALITY GATE</text>
+  <text class="micro" x="560" y="313">VALID • UNCERTAINTY • STALE</text>
+
+  <!-- tray 3 map geometry -->
+  <path class="edge" fill="url(#tray)" d="M238 340 745 340 800 357 293 357Z"/>
+  <path class="edge" fill="#1a2329" d="M293 357 800 357 800 406 293 406Z"/>
+  <path class="edge" fill="#303c43" d="M238 340 293 357 293 406 238 389Z"/>
+  <path class="edge" fill="#6b4d35" d="M344 352 510 352 536 360 370 360Z"/>
+  <path class="edge" fill="#392f27" d="M370 360 536 360 536 388 370 388Z"/>
+  <path class="fine" d="M392 371 414 365 436 372 458 365 480 372 502 366"/>
+  <text class="ink" x="314" y="399">03  MAP + GEOMETRY</text>
+  <text class="micro" x="560" y="388">LOCAL CM • SEGMENTS • CLAMP</text>
+
+  <!-- tray 4 risk -->
+  <path class="edge" fill="url(#tray)" d="M238 415 745 415 800 432 293 432Z"/>
+  <path class="edge" fill="#1a2329" d="M293 432 800 432 800 481 293 481Z"/>
+  <path class="edge" fill="#303c43" d="M238 415 293 432 293 481 238 464Z"/>
+  <circle class="edge" cx="452" cy="449" r="22" fill="#a05239"/>
+  <path d="M452 449 466 438" stroke="#f4d0a6" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="520" cy="449" r="8" fill="#69bd8d"/><circle cx="548" cy="449" r="8" fill="#e1ae48"/><circle cx="576" cy="449" r="8" fill="#d84e45"/>
+  <text class="ink" x="314" y="474">04  APPROACH + RISK</text>
+  <text class="micro" x="602" y="463">SAFE • CAUTION • DANGER</text>
+
+  <!-- tray 5 cue safety -->
+  <path class="edge" fill="url(#tray)" d="M238 490 745 490 800 507 293 507Z"/>
+  <path class="edge" fill="#1a2329" d="M293 507 800 507 800 556 293 556Z"/>
+  <path class="edge" fill="#303c43" d="M238 490 293 507 293 556 238 539Z"/>
+  <path class="edge" fill="url(#copper)" d="M349 502 425 502 440 507 364 507Z"/>
+  <path class="edge" fill="#3c2923" d="M364 507 440 507 440 535 364 535Z"/>
+  <circle cx="519" cy="523" r="8" fill="#d84e45"/><circle cx="546" cy="523" r="8" fill="#d84e45"/>
+  <text class="ink" x="314" y="549">05  CUE SAFETY</text>
+  <text class="micro" x="580" y="538">RESET OFF • MAX ON • COOLDOWN</text>
+
+  <!-- tray 6 logging -->
+  <path class="edge" fill="url(#tray)" d="M238 565 745 565 800 582 293 582Z"/>
+  <path class="edge" fill="#1a2329" d="M293 582 800 582 800 631 293 631Z"/>
+  <path class="edge" fill="#303c43" d="M238 565 293 582 293 631 238 614Z"/>
+  <path class="edge" fill="#6f7c7f" d="M350 577 542 577 566 584 374 584Z"/>
+  <path class="edge" fill="#10171b" d="M374 584 566 584 566 612 374 612Z"/>
+  <path class="fine" d="M395 594 420 587 445 594 470 587 495 594 520 587"/>
+  <text class="ink" x="314" y="624">06  LOG + REPLAY</text>
+  <text class="micro" x="590" y="613">USB • TRACE • PYTHON / MCU / RTL</text>
+
+  <!-- vertical signal spine -->
+  <path class="signal" d="M824 218 852 218 852 596 824 596"/>
+  <circle cx="824" cy="218" r="5" fill="#d69b58"/><circle cx="824" cy="293" r="5" fill="#d69b58"/>
+  <circle cx="824" cy="368" r="5" fill="#d69b58"/><circle cx="824" cy="443" r="5" fill="#d69b58"/>
+  <circle cx="824" cy="518" r="5" fill="#d69b58"/><circle cx="824" cy="593" r="5" fill="#d69b58"/>
+  <text x="861" y="409" fill="#8b5830" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" transform="rotate(90 861 409)">LOCAL DECISION PATH</text>
+
+  <!-- disconnected HerdSync pod -->
+  <path class="edge" fill="#59656b" d="M865 248 1000 204 1040 216 904 262Z"/>
+  <path class="edge" fill="#20282e" d="M904 262 1040 216 1040 322 904 368Z"/>
+  <path class="edge" fill="#303c43" d="M865 248 904 262 904 368 865 354Z"/>
+  <rect x="920" y="265" width="88" height="48" rx="5" fill="#172126" stroke="#9ca8ad" stroke-width="2"/>
+  <circle cx="938" cy="281" r="4" class="status"/><circle cx="953" cy="281" r="4" class="status"/>
+  <path class="fine" d="M932 298 1000 276M932 307 1000 285"/>
+  <text class="ink" x="885" y="394">HERDSYNC-DTN</text>
+  <text class="micro" x="885" y="412">STATUS / TELEMETRY ONLY</text>
+  <path d="M824 293 855 293 865 284" fill="none" stroke="#9ca8ad" stroke-width="2" stroke-dasharray="6 6"/>
+  <text class="micro" x="878" y="233">NO CUE AUTHORITY</text>
+
+  <!-- legend -->
+  <circle cx="93" cy="636" r="6" fill="#d69b58"/><text class="micro" x="108" y="640">validated data path</text>
+  <circle cx="246" cy="636" r="6" class="status"/><text class="micro" x="261" y="640">test status only</text>
+  <text class="micro" x="724" y="640">v0.1: no radio or network dependency</text>
+</svg>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 type Risk = "INVALID" | "SAFE" | "CAUTION" | "DANGER" | "COOLDOWN";
 type ConnectionState = "connecting" | "live" | "fallback";
@@ -42,6 +42,9 @@ type Animal = {
 };
 
 type DemoMode = "approach" | "away" | "stale";
+const BALAT_BLE_SERVICE = "7f510001-1b15-4f0d-8e3a-7c522f8b96a1";
+const BALAT_BLE_CONTROL = "7f510002-1b15-4f0d-8e3a-7c522f8b96a1";
+const BALAT_BLE_STATUS = "7f510003-1b15-4f0d-8e3a-7c522f8b96a1";
 
 const demoModes: Record<DemoMode, { label: string; distance: number; velocity: number; risk: Risk; note: string }> = {
   approach: { label: "Approaching road", distance: 42, velocity: 1.8, risk: "DANGER", note: "Valid fixes move toward the nearest mapped segment." },
@@ -180,6 +183,19 @@ function toRisk(value: string): Risk {
     : "INVALID";
 }
 
+function decodeBleStatus(value: DataView): TelemetryState | null {
+  if (value.byteLength !== 19 || value.getUint8(0) !== 1) return null;
+  const risk = (["INVALID", "SAFE", "CAUTION", "DANGER", "COOLDOWN"] as const)[value.getUint8(17)] ?? "INVALID";
+  const flags = value.getUint8(18);
+  return {
+    x_cm: value.getInt32(1, true), y_cm: value.getInt32(5, true),
+    dist_m: value.getUint32(9, true) / 100, seq: value.getUint32(13, true),
+    risk_name: risk, fix_valid: (flags & 1) !== 0, map_valid: (flags & 2) !== 0,
+    cue_active: (flags & 4) !== 0, battery_mv: 0, quality: 100,
+    source: "ESP32_BLE", link_status: "BLE",
+  };
+}
+
 function formatDistance(distance: number): string {
   return `${Number.isFinite(distance) ? distance.toFixed(1) : "—"} m`;
 }
@@ -194,11 +210,11 @@ function Metric({ label, value, detail, accent = "" }: { label: string; value: s
   );
 }
 
-function MapPanel({ animals, activeId, onSelect, esp32Source, livePoint }: { animals: Animal[]; activeId: string; onSelect: (id: string) => void; esp32Source: boolean; livePoint: { x_cm: number; y_cm: number } | null }) {
+function MapPanel({ animals, activeId, onSelect, esp32Source, livePoint, onMoveMock }: { animals: Animal[]; activeId: string; onSelect: (id: string) => void; esp32Source: boolean; livePoint: { x_cm: number; y_cm: number } | null; onMoveMock?: (point: { x_cm: number; y_cm: number }) => void }) {
   const displayedAnimals = esp32Source ? animals.slice(0, 1) : animals;
   const livePosition = livePoint ? {
-    left: `${Math.max(6, Math.min(94, 50 + livePoint.x_cm / 150_000 * 100))}%`,
-    top: `${Math.max(6, Math.min(94, 50 - livePoint.y_cm / 150_000 * 100))}%`,
+    left: `${Math.max(2, Math.min(98, 50 + livePoint.x_cm / 120_000 * 100))}%`,
+    top: `${Math.max(2, Math.min(98, 50 - livePoint.y_cm / 120_000 * 100))}%`,
   } : null;
   return (
     <div className="map-panel">
@@ -209,14 +225,23 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, livePoint }: { ani
         </div>
         <span className="map-chip">OPENSTREETMAP</span>
       </div>
-      <div className="map">
-        <iframe
-          title={esp32Source ? "OpenStreetMap view at the hardware bench origin" : "OpenStreetMap view of Corridor 04 near Kupang"}
-          src={esp32Source
-            ? "https://www.openstreetmap.org/export/embed.html?bbox=18.63%2C-33.845%2C18.67%2C-33.805&layer=mapnik&marker=-33.825,18.65"
-            : "https://www.openstreetmap.org/export/embed.html?bbox=123.52%2C-10.22%2C123.66%2C-10.12&layer=mapnik&marker=-10.17,123.59"}
+      <div className={esp32Source ? "map local-risk-map" : "map"} onPointerDown={(event) => {
+        if (!esp32Source || !onMoveMock) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x_cm = Math.round(((event.clientX - rect.left) / rect.width - 0.5) * 120_000);
+        const y_cm = Math.round((0.5 - (event.clientY - rect.top) / rect.height) * 120_000);
+        onMoveMock({ x_cm, y_cm });
+      }}>
+        {esp32Source && <svg className="local-map-art" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Local demo road map">
+          <path className="local-road-buffer" d="M50 0V100"/><path className="local-road" d="M50 0V100"/>
+          <path className="local-road-secondary" d="M0 50H100"/><path className="local-road-secondary" d="M22 0L78 100"/>
+          <text x="52" y="8">ROAD SEGMENT</text><text x="3" y="48">CROSSING</text>
+        </svg>}
+        {!esp32Source && <iframe
+          title="OpenStreetMap view of Corridor 04 near Kupang"
+          src="https://www.openstreetmap.org/export/embed.html?bbox=123.52%2C-10.22%2C123.66%2C-10.12&layer=mapnik&marker=-10.17,123.59"
           loading="lazy"
-        />
+        />}
         {/* Overlay cattle positions on map */}
         <div className="map-overlay">
           {displayedAnimals.map((animal, idx) => {
@@ -235,6 +260,7 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, livePoint }: { ani
                 className={`map-marker ${tone[animal.risk]} ${activeId === animal.id ? 'active' : ''}`}
                 style={{ left: pos.left, top: pos.top }}
                 onClick={() => onSelect(animal.id)}
+                onPointerMove={(event) => { if ((event.buttons & 1) !== 0 && esp32Source && onMoveMock) { event.stopPropagation(); const rect = event.currentTarget.parentElement?.parentElement?.getBoundingClientRect(); if (rect) onMoveMock({ x_cm: Math.round(((event.clientX - rect.left) / rect.width - 0.5) * 120_000), y_cm: Math.round((0.5 - (event.clientY - rect.top) / rect.height) * 120_000) }); } }}
                 aria-label={`${animal.name} - ${animal.risk}`}
               >
                 <span className="marker-pulse" />
@@ -274,10 +300,17 @@ export default function Home() {
   const [mockControlBusy, setMockControlBusy] = useState(false);
   const [mockControlMessage, setMockControlMessage] = useState("");
   const [noticeVisible, setNoticeVisible] = useState(true);
+  const [bleCharacteristic, setBleCharacteristic] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
+  const [bleStatus, setBleStatus] = useState("BLE disconnected");
+  const lastMockSend = useRef(0);
 
   const apiBase = process.env.NEXT_PUBLIC_BALAT_API_URL?.replace(/\/$/, "") || "http://localhost:8888";
 
   useEffect(() => {
+    if (bleCharacteristic) {
+      const timer = window.setInterval(() => setNow(new Date().toLocaleTimeString("en-GB", { hour12: false })), 1000);
+      return () => window.clearInterval(timer);
+    }
     let cancelled = false;
 
     const pollTelemetry = async () => {
@@ -334,9 +367,9 @@ export default function Home() {
       window.clearInterval(telemetryTimer);
       clearInterval(timer);
     };
-  }, [apiBase, connection]);
+  }, [apiBase, connection, bleCharacteristic]);
 
-  const esp32Source = connection === "live" && telemetry?.source === "ESP32_UART";
+  const esp32Source = Boolean(bleCharacteristic) || (connection === "live" && (telemetry?.source === "ESP32_UART" || telemetry?.source === "ESP32_BLE"));
   const fpgaNmeaSource = connection === "live" && telemetry?.source === "BASYS3_NMEA_UART";
   const benchSource = esp32Source || fpgaNmeaSource;
   const benchLabel = fpgaNmeaSource ? "Basys 3 FPGA" : "ESP32 bench";
@@ -352,6 +385,42 @@ export default function Home() {
     : connection === "connecting" ? "CONNECTING TO BRIDGE" : "SYNTHETIC TRACE FALLBACK";
   const isExplainerView = view === "How BALAT works";
   const navItems = ["Overview", "Herd monitor", "Road memory", "Telemetry log", "How BALAT works"];
+  const connectBle = async () => {
+    try {
+      const bluetooth = (navigator as Navigator & { bluetooth?: { requestDevice(options: unknown): Promise<BluetoothDevice> } }).bluetooth;
+      if (!bluetooth) throw new Error("Web Bluetooth is unavailable in this browser.");
+      const device = await bluetooth.requestDevice({ filters: [{ namePrefix: "BALAT" }], optionalServices: [BALAT_BLE_SERVICE] });
+      const server = await device.gatt?.connect();
+      const service = await server?.getPrimaryService(BALAT_BLE_SERVICE);
+      const characteristic = await service?.getCharacteristic(BALAT_BLE_CONTROL);
+      const statusCharacteristic = await service?.getCharacteristic(BALAT_BLE_STATUS);
+      if (!characteristic || !statusCharacteristic) throw new Error("BALAT BLE characteristics were not found.");
+      await statusCharacteristic.startNotifications();
+      statusCharacteristic.addEventListener("characteristicvaluechanged", (event) => {
+        const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
+        if (!value) return;
+        const frame = decodeBleStatus(value);
+        if (frame) { setTelemetry(frame); setConnection("live"); setAnimals((items) => items.map((animal, index) => index === 0 ? { ...animal, id: "ESP32-C3", name: "ESP32-C3 bench", risk: toRisk(frame.risk_name), distance: formatDistance(frame.dist_m), region: "ESP32-C3 · local coordinates", lastSeen: "just now", signal: "EDGE" } : animal)); }
+      });
+      setBleCharacteristic(characteristic);
+      setBleStatus("BLE connected");
+      setActiveId("ESP32-C3");
+      const initial = decodeBleStatus(await statusCharacteristic.readValue());
+      if (initial) { setTelemetry(initial); setConnection("live"); }
+    } catch (error) { setBleStatus(error instanceof Error ? error.message : "BLE connection failed"); }
+  };
+  const moveMockCow = (point: { x_cm: number; y_cm: number }) => {
+    const characteristic = bleCharacteristic;
+    if (!characteristic) return;
+    if (performance.now() - lastMockSend.current < 150) return;
+    lastMockSend.current = performance.now();
+    const packet = new Uint8Array(9);
+    const view = new DataView(packet.buffer);
+    packet[0] = 0x10;
+    view.setInt32(1, point.x_cm, true);
+    view.setInt32(5, point.y_cm, true);
+    void characteristic.writeValue(packet).catch((error) => setBleStatus(error instanceof Error ? error.message : "Position update failed"));
+  };
   const togglePitchMode = () => {
     const url = new URL(window.location.href);
     if (pitchMode) url.searchParams.delete("pitch");
@@ -402,7 +471,7 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div><span className="eyebrow">{pitchMode ? `BALAT / ${isExplainerView ? "SYSTEM EXPLAINER" : "FIELD CONSOLE"}` : `FIELD OPERATIONS / ${view.toUpperCase()}`}</span><h1>{pitchMode ? isExplainerView ? "How the local risk engine works." : benchSource ? `${benchLabel} · local risk state` : "Corridor 04 · Kupang" : view === "Overview" ? "Good evening, operator." : view}</h1></div>
-          <div className="top-actions"><span className="replay-label"><span className="status-dot safe-dot" /> {sourceLabel}</span><span className="clock">{now} WIB</span>{pitchMode && <button className="pitch-toggle" onClick={() => setView(isExplainerView ? "Overview" : "How BALAT works")}>{isExplainerView ? "Dashboard" : "How it works"}</button>}<button className="pitch-toggle" onClick={togglePitchMode}>{pitchMode ? "Operator view" : "Pitch snapshot"}</button><button className="icon-button">⚙</button></div>
+          <div className="top-actions"><span className="replay-label"><span className="status-dot safe-dot" /> {sourceLabel}</span><span className="clock">{now} WIB</span><button className="pitch-toggle" onClick={() => { if (bleCharacteristic) { try { bleCharacteristic.service?.device?.gatt?.disconnect(); } catch {} setBleCharacteristic(null); setBleStatus("BLE disconnected"); setConnection("connecting"); } else { void connectBle(); } }}>{bleCharacteristic ? `${bleStatus} · Disconnect` : "Connect ESP32 BLE"}</button>{pitchMode && <button className="pitch-toggle" onClick={() => setView(isExplainerView ? "Overview" : "How BALAT works")}>{isExplainerView ? "Dashboard" : "How it works"}</button>}<button className="pitch-toggle" onClick={togglePitchMode}>{pitchMode ? "Operator view" : "Pitch snapshot"}</button><button className="icon-button">⚙</button></div>
         </header>
 
         {noticeVisible && <div className="notice"><span className="notice-icon">i</span><span><b>{connection === "live" ? "Bench telemetry connected." : "Demo environment."}</b> {connection === "live" ? esp32Source ? "The dashboard sends mock NMEA; ESP32 cue outputs still require the physical PCB button." : fpgaNmeaSource ? "Dashboard mock NMEA is parsed and assessed on the FPGA; its JA1 cue is logic-level only." : "Read-only telemetry is arriving from the BALAT bridge." : "The telemetry bridge is unavailable, so this console is showing synthetic collar data."} Animal guidance effectiveness has not been validated in field trials.</span><button onClick={() => setNoticeVisible(false)}>Dismiss</button></div>}
@@ -458,6 +527,7 @@ export default function Home() {
               onSelect={setActiveId}
               esp32Source={benchSource}
               livePoint={livePoint}
+              onMoveMock={moveMockCow}
             />
             <section className="risk-card">
               <div className="card-header"><div><span className="eyebrow">SELECTED COLLAR</span><h2>{selected.name}</h2></div><RiskBadge risk={selected.risk} /></div>
