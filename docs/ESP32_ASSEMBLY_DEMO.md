@@ -80,6 +80,24 @@ the buzzer and motor controls.
 
 ## Mock GPS and dashboard demonstration
 
+### Direct BLE demo (no USB serial bridge)
+
+The ESP32-C3 firmware advertises as `BALAT-C3`. In Chrome or Edge, open the
+dashboard from `http://localhost:3000` or an HTTPS deployment, choose **Connect
+ESP32 BLE**, and select `BALAT-C3` in the browser prompt. Web Bluetooth is not
+available to pages served from an insecure LAN address such as
+`http://192.168.x.x`.
+
+Use **Start replay** to run the 201 synthetic fixes compiled into the ESP32
+firmware. The dashboard receives risk and position updates over BLE
+notifications. **Pause**, **Reset**, and **GPS mode** control that replay; while
+paused, dragging on the local map sends individual synthetic positions. This
+path uses the firmware replay fixture directly and does not exercise the NMEA
+parser. Keep the PCB hold-to-enable button released and actuator loads
+disconnected during the demonstration.
+
+### USB serial NMEA replay
+
 Install the serial package once if needed: `python3 -m pip install pyserial`.
 From the repository root, start the ESP32 bridge without `--mock-gps` to
 control replay from the dashboard:

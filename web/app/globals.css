@@ -93,7 +93,9 @@ nav { display: grid; gap: 4px; }
 .metric-card strong { display: block; font-size: 26px; margin-top: 8px; letter-spacing: -0.02em; font-weight: 700; color: var(--ink); }
 .metric-detail { color: var(--muted); display: block; margin-top: 6px; font-size: 12px; }
 .pitch-toggle { border: 1px solid var(--line); background: var(--panel); color: var(--green); border-radius: 8px; padding: 8px 12px; font-size: 11px; font-weight: 600; transition: all 0.15s; }
+.pitch-toggle:disabled { cursor: progress; opacity: .6; }
 .pitch-toggle:hover { background: var(--panel-2); box-shadow: var(--shadow-sm); }
+.ble-status { margin: 8px 40px 0; color: var(--muted); font-size: 12px; }
 .main-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-top: 16px; }
 .map-panel, .risk-card, .herd-section, .events-card, .evidence-card { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); transition: all 0.15s; }
 .map-panel:hover, .risk-card:hover, .herd-section:hover, .events-card:hover, .evidence-card:hover { box-shadow: var(--shadow-md); }
@@ -265,6 +267,7 @@ button:active, [role="button"]:active { transform: translateY(1px); }
 }
 
 @media (max-width: 768px) {
+  .ble-status { margin-right: 16px; margin-left: 16px; }
   .app-shell { display: block; }
   .sidebar { width: 100%; min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 16px; }
   .workspace { width: 100%; min-width: 0; }

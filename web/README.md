@@ -33,7 +33,17 @@ Basys 3 USB-UART records. The browser-facing bridge remains read-only; recording
 controls belong to the legacy bridge page and are intentionally not exposed as
 FPGA controls by this dashboard.
 
-## ESP32-C3 bench and mock NMEA
+## ESP32-C3 BLE demo and mock NMEA
+
+For a direct BLE demo without a serial bridge, flash the ESP32-C3 firmware,
+open the dashboard in Chrome or Edge on `localhost` or HTTPS, and connect to
+`BALAT-C3`. The BLE panel replays the 201 synthetic fixes compiled into the
+firmware and displays live status notifications. This is a firmware fixture
+replay, not live GPS or NMEA-parser input. Keep the physical cue-enable button
+released. Detailed board setup and safety checks are in
+[`../docs/ESP32_ASSEMBLY_DEMO.md`](../docs/ESP32_ASSEMBLY_DEMO.md).
+
+### USB serial NMEA input
 
 The same bridge can read ESP32 key/value decision logs. Connect and flash the
 ESP32-C3 using [`../docs/ESP32_ASSEMBLY_DEMO.md`](../docs/ESP32_ASSEMBLY_DEMO.md),

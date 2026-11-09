@@ -39,6 +39,7 @@ static bool mock_mode;
 static QueueHandle_t command_queue;
 static uint16_t ble_status_handle;
 static uint16_t ble_connection = BLE_HS_CONN_HANDLE_NONE;
+static uint8_t ble_own_addr_type;
 static const ble_uuid128_t balat_service_uuid = BLE_UUID128_INIT(0xa1,0x96,0x8b,0x2f,0x52,0x7c,0x3a,0x8e,0x0d,0x4f,0x15,0x1b,0x01,0x00,0x51,0x7f);
 static const ble_uuid128_t balat_control_uuid = BLE_UUID128_INIT(0xa1,0x96,0x8b,0x2f,0x52,0x7c,0x3a,0x8e,0x0d,0x4f,0x15,0x1b,0x02,0x00,0x51,0x7f);
 static const ble_uuid128_t balat_status_uuid = BLE_UUID128_INIT(0xa1,0x96,0x8b,0x2f,0x52,0x7c,0x3a,0x8e,0x0d,0x4f,0x15,0x1b,0x03,0x00,0x51,0x7f);
@@ -48,11 +49,21 @@ static int ble_access(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt 
     (void)conn; (void)arg;
     if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
         uint8_t bytes[9]; uint16_t len = 0;
-        if (OS_MBUF_PKTLEN(ctxt->om) != sizeof(bytes) || ble_hs_mbuf_to_flat(ctxt->om, bytes, sizeof(bytes), &len) != 0 || len != sizeof(bytes) || bytes[0] != 0x10) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-        int32_t x = (int32_t)((uint32_t)bytes[1] | ((uint32_t)bytes[2] << 8) | ((uint32_t)bytes[3] << 16) | ((uint32_t)bytes[4] << 24));
-        int32_t y = (int32_t)((uint32_t)bytes[5] | ((uint32_t)bytes[6] << 8) | ((uint32_t)bytes[7] << 16) | ((uint32_t)bytes[8] << 24));
-        if (x < -BALAT_MAX_COORD_CM || x > BALAT_MAX_COORD_CM || y < -BALAT_MAX_COORD_CM || y > BALAT_MAX_COORD_CM) return BLE_ATT_ERR_UNLIKELY;
-        char command[LINE_CAP]; (void)snprintf(command, sizeof(command), "BLEFIX %ld %ld", (long)x, (long)y);
+        uint16_t packet_len = OS_MBUF_PKTLEN(ctxt->om);
+        if (packet_len > sizeof(bytes) || ble_hs_mbuf_to_flat(ctxt->om, bytes, sizeof(bytes), &len) != 0 || len != packet_len) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        char command[LINE_CAP] = {0};
+        if (len == 9u && bytes[0] == 0x10u) {
+            int32_t x = (int32_t)((uint32_t)bytes[1] | ((uint32_t)bytes[2] << 8) | ((uint32_t)bytes[3] << 16) | ((uint32_t)bytes[4] << 24));
+            int32_t y = (int32_t)((uint32_t)bytes[5] | ((uint32_t)bytes[6] << 8) | ((uint32_t)bytes[7] << 16) | ((uint32_t)bytes[8] << 24));
+            if (x < -BALAT_MAX_COORD_CM || x > BALAT_MAX_COORD_CM || y < -BALAT_MAX_COORD_CM || y > BALAT_MAX_COORD_CM) return BLE_ATT_ERR_UNLIKELY;
+            (void)snprintf(command, sizeof(command), "BLEFIX %ld %ld", (long)x, (long)y);
+        } else if (len == 2u && bytes[0] == 0x20u) {
+            const char *action = bytes[1] == 1u ? "START" : bytes[1] == 2u ? "PAUSE" : bytes[1] == 3u ? "RESET" : bytes[1] == 4u ? "STOP" : NULL;
+            if (action == NULL) return BLE_ATT_ERR_UNLIKELY;
+            (void)snprintf(command, sizeof(command), "DEMO %s", action);
+        } else {
+            return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        }
         return xQueueSend(command_queue, command, 0) == pdTRUE ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     }
     if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR && attr == ble_status_handle) {
@@ -80,12 +91,27 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg)
 static void ble_advertise(void)
 {
     struct ble_hs_adv_fields fields = {0}; struct ble_gap_adv_params params = {0};
+    int rc;
     const char *name = "BALAT-C3"; fields.name=(uint8_t *)name; fields.name_len=strlen(name); fields.name_is_complete=1; fields.flags=BLE_HS_ADV_F_DISC_GEN|BLE_HS_ADV_F_BREDR_UNSUP;
-    (void)ble_gap_adv_set_fields(&fields); params.conn_mode=BLE_GAP_CONN_MODE_UND; params.disc_mode=BLE_GAP_DISC_MODE_GEN;
-    (void)ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC,NULL,BLE_HS_FOREVER,&params,ble_gap_event,NULL);
+    rc = ble_gap_adv_set_fields(&fields);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "BLE advertisement data setup failed: %d", rc);
+        return;
+    }
+    params.conn_mode=BLE_GAP_CONN_MODE_UND; params.disc_mode=BLE_GAP_DISC_MODE_GEN;
+    rc = ble_gap_adv_start(ble_own_addr_type,NULL,BLE_HS_FOREVER,&params,ble_gap_event,NULL);
+    if (rc != 0) ESP_LOGE(TAG, "BLE advertising start failed: %d", rc);
 }
 
-static void ble_sync(void) { (void)ble_hs_id_infer_auto(0,NULL); ble_advertise(); }
+static void ble_sync(void)
+{
+    int rc = ble_hs_id_infer_auto(0, &ble_own_addr_type);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "BLE address type inference failed: %d", rc);
+        return;
+    }
+    ble_advertise();
+}
 static void ble_host(void *arg) { (void)arg; nimble_port_run(); nimble_port_freertos_deinit(); }
 
 static const balat_engine_config_t ENGINE_CONFIG = {
@@ -163,6 +189,7 @@ static void set_gps_power(bool enabled)
 static void print_help(void)
 {
     puts("HELP STATUS MAP REPLAY START|STOP|RESET FIX <x_cm> <y_cm>");
+    puts("BLE demo replay: DEMO START|PAUSE|RESET|STOP (201 synthetic fixes)");
     puts("NMEA <sentence> is accepted only in mock mode.");
     puts("MOCK START|PAUSE|RESET|STOP; FAULT NONE|STALE|MAP|CORRUPT CLEAR RESET");
     puts("PCB map: BUZ=GPIO3 MOT=GPIO4 GPS_EN=GPIO5 BTN=GPIO6 LED=GPIO10 GPS_RX=GPIO20");
@@ -191,6 +218,31 @@ static void process_command(char *line)
         else if (arg != NULL && strcmp(arg, "STOP") == 0) replay_running = false;
         else if (arg != NULL && strcmp(arg, "RESET") == 0) replay_index = 0u;
         else puts("ERR REPLAY START|STOP|RESET");
+    } else if (strcmp(command, "DEMO") == 0) {
+        char *arg = strtok_r(NULL, " \r\n", &save);
+        if (arg != NULL && strcmp(arg, "START") == 0) {
+            if (!mock_mode || replay_index == 0u || replay_index >= balat_fixture_replay_count) reset_engine();
+            mock_mode = true;
+            set_gps_power(false);
+            replay_running = true;
+            puts("OK DEMO START; 201 synthetic fixes");
+        } else if (arg != NULL && strcmp(arg, "PAUSE") == 0) {
+            replay_running = false;
+            puts("OK DEMO PAUSE");
+        } else if (arg != NULL && strcmp(arg, "RESET") == 0) {
+            reset_engine();
+            mock_mode = true;
+            set_gps_power(false);
+            puts("OK DEMO RESET");
+        } else if (arg != NULL && strcmp(arg, "STOP") == 0) {
+            replay_running = false;
+            mock_mode = false;
+            reset_engine();
+            set_gps_power(true);
+            puts("OK DEMO STOP; GPS input selected");
+        } else {
+            puts("ERR DEMO START|PAUSE|RESET|STOP");
+        }
     } else if (strcmp(command, "FIX") == 0 || strcmp(command, "BLEFIX") == 0) {
         if (strcmp(command, "BLEFIX") == 0) { mock_mode = true; set_gps_power(false); }
         char *x = strtok_r(NULL, " \r\n", &save);

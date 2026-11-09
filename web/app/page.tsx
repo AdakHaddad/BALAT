@@ -45,6 +45,7 @@ type DemoMode = "approach" | "away" | "stale";
 const BALAT_BLE_SERVICE = "7f510001-1b15-4f0d-8e3a-7c522f8b96a1";
 const BALAT_BLE_CONTROL = "7f510002-1b15-4f0d-8e3a-7c522f8b96a1";
 const BALAT_BLE_STATUS = "7f510003-1b15-4f0d-8e3a-7c522f8b96a1";
+const BLE_REPLAY_FIX_COUNT = 201;
 
 const demoModes: Record<DemoMode, { label: string; distance: number; velocity: number; risk: Risk; note: string }> = {
   approach: { label: "Approaching road", distance: 42, velocity: 1.8, risk: "DANGER", note: "Valid fixes move toward the nearest mapped segment." },
@@ -302,6 +303,9 @@ export default function Home() {
   const [noticeVisible, setNoticeVisible] = useState(true);
   const [bleCharacteristic, setBleCharacteristic] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
   const [bleStatus, setBleStatus] = useState("BLE disconnected");
+  const [bleConnecting, setBleConnecting] = useState(false);
+  const [bleControlBusy, setBleControlBusy] = useState(false);
+  const [bleReplayRunning, setBleReplayRunning] = useState(false);
   const lastMockSend = useRef(0);
 
   const apiBase = process.env.NEXT_PUBLIC_BALAT_API_URL?.replace(/\/$/, "") || "http://localhost:8888";
@@ -381,37 +385,84 @@ export default function Home() {
     ? { x_cm: telemetry.x_cm, y_cm: telemetry.y_cm }
     : null;
   const sourceLabel = connection === "live"
-    ? telemetry?.source === "ESP32_UART" ? "LIVE ESP32 TELEMETRY" : telemetry?.source === "BASYS3_UART" || telemetry?.source === "BASYS3_NMEA_UART" ? "LIVE FPGA TELEMETRY" : "SYNTHETIC TRACE"
+    ? telemetry?.source === "ESP32_BLE" ? "LIVE ESP32 BLE" : telemetry?.source === "ESP32_UART" ? "LIVE ESP32 TELEMETRY" : telemetry?.source === "BASYS3_UART" || telemetry?.source === "BASYS3_NMEA_UART" ? "LIVE FPGA TELEMETRY" : "SYNTHETIC TRACE"
     : connection === "connecting" ? "CONNECTING TO BRIDGE" : "SYNTHETIC TRACE FALLBACK";
   const isExplainerView = view === "How BALAT works";
   const navItems = ["Overview", "Herd monitor", "Road memory", "Telemetry log", "How BALAT works"];
+  const serialReplaySource = connection === "live" && (telemetry?.source === "ESP32_UART" || telemetry?.source === "BASYS3_NMEA_UART");
+  const applyBleFrame = (frame: TelemetryState) => {
+    setTelemetry(frame);
+    setConnection("live");
+    if (frame.seq >= BLE_REPLAY_FIX_COUNT) setBleReplayRunning(false);
+    setAnimals((items) => items.map((animal, index) => index === 0 ? {
+      ...animal,
+      id: "ESP32-C3",
+      name: "ESP32-C3 Super Mini",
+      risk: toRisk(frame.risk_name),
+      distance: formatDistance(frame.dist_m),
+      region: "ESP32-C3 · local coordinates",
+      lastSeen: "just now",
+      signal: "EDGE",
+    } : animal));
+  };
   const connectBle = async () => {
+    let device: BluetoothDevice | null = null;
+    setBleConnecting(true);
+    setBleStatus("Choose BALAT-C3 in the browser prompt.");
     try {
+      if (!window.isSecureContext) throw new Error("Web Bluetooth requires HTTPS or localhost.");
       const bluetooth = (navigator as Navigator & { bluetooth?: { requestDevice(options: unknown): Promise<BluetoothDevice> } }).bluetooth;
       if (!bluetooth) throw new Error("Web Bluetooth is unavailable in this browser.");
-      const device = await bluetooth.requestDevice({ filters: [{ namePrefix: "BALAT" }], optionalServices: [BALAT_BLE_SERVICE] });
+      device = await bluetooth.requestDevice({ filters: [{ namePrefix: "BALAT" }], optionalServices: [BALAT_BLE_SERVICE] });
       const server = await device.gatt?.connect();
+      if (!server) throw new Error("Could not connect to BALAT-C3 GATT server.");
       const service = await server?.getPrimaryService(BALAT_BLE_SERVICE);
       const characteristic = await service?.getCharacteristic(BALAT_BLE_CONTROL);
       const statusCharacteristic = await service?.getCharacteristic(BALAT_BLE_STATUS);
       if (!characteristic || !statusCharacteristic) throw new Error("BALAT BLE characteristics were not found.");
       await statusCharacteristic.startNotifications();
+      device.addEventListener("gattserverdisconnected", () => {
+        setBleCharacteristic(null);
+        setBleReplayRunning(false);
+        setBleStatus("ESP32-C3 disconnected.");
+        setConnection("connecting");
+      });
       statusCharacteristic.addEventListener("characteristicvaluechanged", (event) => {
         const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
         if (!value) return;
         const frame = decodeBleStatus(value);
-        if (frame) { setTelemetry(frame); setConnection("live"); setAnimals((items) => items.map((animal, index) => index === 0 ? { ...animal, id: "ESP32-C3", name: "ESP32-C3 bench", risk: toRisk(frame.risk_name), distance: formatDistance(frame.dist_m), region: "ESP32-C3 · local coordinates", lastSeen: "just now", signal: "EDGE" } : animal)); }
+        if (frame) applyBleFrame(frame);
       });
       setBleCharacteristic(characteristic);
-      setBleStatus("BLE connected");
+      setBleStatus("Connected to BALAT-C3.");
       setActiveId("ESP32-C3");
       const initial = decodeBleStatus(await statusCharacteristic.readValue());
-      if (initial) { setTelemetry(initial); setConnection("live"); }
-    } catch (error) { setBleStatus(error instanceof Error ? error.message : "BLE connection failed"); }
+      if (initial) applyBleFrame(initial);
+    } catch (error) {
+      device?.gatt?.disconnect();
+      setBleCharacteristic(null);
+      setBleStatus(error instanceof Error ? error.message : "BLE connection failed.");
+    } finally {
+      setBleConnecting(false);
+    }
+  };
+  const controlBleReplay = async (action: "start" | "pause" | "reset" | "gps") => {
+    if (!bleCharacteristic) return;
+    const command = action === "start" ? 1 : action === "pause" ? 2 : action === "reset" ? 3 : 4;
+    setBleControlBusy(true);
+    try {
+      await bleCharacteristic.writeValue(new Uint8Array([0x20, command]));
+      setBleReplayRunning(action === "start");
+      setBleStatus(action === "gps" ? "GPS receiver selected." : `BLE replay ${action === "start" ? "started" : action === "pause" ? "paused" : action === "reset" ? "reset" : "stopped"}.`);
+    } catch (error) {
+      setBleStatus(error instanceof Error ? error.message : "BLE replay command failed.");
+    } finally {
+      setBleControlBusy(false);
+    }
   };
   const moveMockCow = (point: { x_cm: number; y_cm: number }) => {
     const characteristic = bleCharacteristic;
-    if (!characteristic) return;
+    if (!characteristic || bleReplayRunning) return;
     if (performance.now() - lastMockSend.current < 150) return;
     lastMockSend.current = performance.now();
     const packet = new Uint8Array(9);
@@ -471,12 +522,29 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div><span className="eyebrow">{pitchMode ? `BALAT / ${isExplainerView ? "SYSTEM EXPLAINER" : "FIELD CONSOLE"}` : `FIELD OPERATIONS / ${view.toUpperCase()}`}</span><h1>{pitchMode ? isExplainerView ? "How the local risk engine works." : benchSource ? `${benchLabel} · local risk state` : "Corridor 04 · Kupang" : view === "Overview" ? "Good evening, operator." : view}</h1></div>
-          <div className="top-actions"><span className="replay-label"><span className="status-dot safe-dot" /> {sourceLabel}</span><span className="clock">{now} WIB</span><button className="pitch-toggle" onClick={() => { if (bleCharacteristic) { try { bleCharacteristic.service?.device?.gatt?.disconnect(); } catch {} setBleCharacteristic(null); setBleStatus("BLE disconnected"); setConnection("connecting"); } else { void connectBle(); } }}>{bleCharacteristic ? `${bleStatus} · Disconnect` : "Connect ESP32 BLE"}</button>{pitchMode && <button className="pitch-toggle" onClick={() => setView(isExplainerView ? "Overview" : "How BALAT works")}>{isExplainerView ? "Dashboard" : "How it works"}</button>}<button className="pitch-toggle" onClick={togglePitchMode}>{pitchMode ? "Operator view" : "Pitch snapshot"}</button><button className="icon-button">⚙</button></div>
+          <div className="top-actions"><span className="replay-label"><span className="status-dot safe-dot" /> {sourceLabel}</span><span className="clock">{now} WIB</span><button className="pitch-toggle" disabled={bleConnecting} onClick={() => { if (bleCharacteristic) { bleCharacteristic.service?.device?.gatt?.disconnect(); setBleCharacteristic(null); setBleReplayRunning(false); setBleStatus("BLE disconnected."); setConnection("connecting"); } else { void connectBle(); } }}>{bleCharacteristic ? "Disconnect ESP32 BLE" : bleConnecting ? "Connecting…" : "Connect ESP32 BLE"}</button>{pitchMode && <button className="pitch-toggle" onClick={() => setView(isExplainerView ? "Overview" : "How BALAT works")}>{isExplainerView ? "Dashboard" : "How it works"}</button>}<button className="pitch-toggle" onClick={togglePitchMode}>{pitchMode ? "Operator view" : "Pitch snapshot"}</button><button className="icon-button">⚙</button></div>
         </header>
 
-        {noticeVisible && <div className="notice"><span className="notice-icon">i</span><span><b>{connection === "live" ? "Bench telemetry connected." : "Demo environment."}</b> {connection === "live" ? esp32Source ? "The dashboard sends mock NMEA; ESP32 cue outputs still require the physical PCB button." : fpgaNmeaSource ? "Dashboard mock NMEA is parsed and assessed on the FPGA; its JA1 cue is logic-level only." : "Read-only telemetry is arriving from the BALAT bridge." : "The telemetry bridge is unavailable, so this console is showing synthetic collar data."} Animal guidance effectiveness has not been validated in field trials.</span><button onClick={() => setNoticeVisible(false)}>Dismiss</button></div>}
+        {bleStatus !== "BLE disconnected" && <div className="ble-status" role="status" aria-live="polite">{bleStatus}</div>}
 
-        {benchSource && <section className="mock-gps-panel" aria-label="Mock GPS controls">
+        {noticeVisible && <div className="notice"><span className="notice-icon">i</span><span><b>{connection === "live" ? "Bench telemetry connected." : "Demo environment."}</b> {connection === "live" ? esp32Source ? bleCharacteristic ? "The ESP32-C3 firmware replay uses synthetic fixtures over BLE; cue outputs still require the physical PCB button." : "The dashboard sends mock NMEA; ESP32 cue outputs still require the physical PCB button." : fpgaNmeaSource ? "Dashboard mock NMEA is parsed and assessed on the FPGA; its JA1 cue is logic-level only." : "Read-only telemetry is arriving from the BALAT bridge." : "The telemetry bridge is unavailable, so this console is showing synthetic collar data."} Animal guidance effectiveness has not been validated in field trials.</span><button onClick={() => setNoticeVisible(false)}>Dismiss</button></div>}
+
+        {bleCharacteristic && <section className="mock-gps-panel" aria-label="ESP32 BLE replay controls">
+          <div className="mock-gps-copy">
+            <span className="eyebrow">ESP32-C3 BLE REPLAY</span>
+            <strong>{bleReplayRunning ? "Firmware replay running" : "Firmware replay paused"}</strong>
+            <small>{Math.min(BLE_REPLAY_FIX_COUNT, telemetry?.seq ?? 0)} / {BLE_REPLAY_FIX_COUNT} synthetic fixes · compiled on device</small>
+          </div>
+          <div className="mock-gps-actions">
+            <button onClick={() => void controlBleReplay("start")} disabled={bleControlBusy || bleReplayRunning}>Start replay</button>
+            <button onClick={() => void controlBleReplay("pause")} disabled={bleControlBusy || !bleReplayRunning}>Pause</button>
+            <button onClick={() => void controlBleReplay("reset")} disabled={bleControlBusy}>Reset</button>
+            <button onClick={() => void controlBleReplay("gps")} disabled={bleControlBusy}>GPS mode</button>
+          </div>
+          <p className="mock-gps-note">This is a 201-fix synthetic firmware replay, not live GNSS. Keep the PCB hold-to-enable button released.</p>
+        </section>}
+
+        {serialReplaySource && <section className="mock-gps-panel" aria-label="Mock GPS controls">
           <div className="mock-gps-copy">
             <span className="eyebrow">{fpgaNmeaSource ? "FPGA INPUT SIMULATION" : "ESP32 INPUT SIMULATION"}</span>
             <strong>{mockGps?.mode === "gps" ? fpgaNmeaSource ? "Mock GPS stopped" : "GPS receiver selected" : mockGps?.running ? "Checksummed NMEA replay running" : "Mock GPS paused"}</strong>
