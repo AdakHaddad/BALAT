@@ -4,6 +4,7 @@
 #include <math.h>
 
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -25,7 +26,14 @@
 /* PCB v1 net mapping: GPIO3 buzzer, GPIO4 motor, GPIO5 GPS power,
  * GPIO6 report button (repurposed as hold-to-enable), GPIO10 LED, GPIO20 GPS TX.
  * USB Serial/JTAG is the console; UART1 is reserved for the GPS receiver.
+ * GPIO3 is driven by LEDC channel 0 (4 kHz, 50% duty) for the piezo buzzer;
+ * it must NOT be included in the plain GPIO output mask.
  */
+#define BUZZER_LEDC_TIMER   LEDC_TIMER_0
+#define BUZZER_LEDC_CHANNEL LEDC_CHANNEL_0
+#define BUZZER_FREQ_HZ      4000u
+#define BUZZER_DUTY_RES     LEDC_TIMER_10_BIT         /* 0–1023 */
+#define BUZZER_DUTY_ON      512u                      /* 50% */
 #define TAG "balat"
 #define GNSS_UART UART_NUM_1
 #define LINE_CAP 160u
@@ -147,7 +155,18 @@ static void outputs_apply(void)
                    s->risk_state == BALAT_RISK_DANGER) &&
         !mock_mode;
 
-    gpio_set_level(CONFIG_BALAT_BUZZER_GPIO, buzzer_active ? 1 : 0);
+    /* Buzzer: LEDC PWM at 4 kHz produces an audible tone from the piezo.
+     * Setting duty to 0 and stopping the timer silences it cleanly.
+     */
+    if (buzzer_active) {
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_LEDC_CHANNEL, BUZZER_DUTY_ON);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_LEDC_CHANNEL);
+    } else {
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_LEDC_CHANNEL, 0u);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_LEDC_CHANNEL);
+    }
+
+    /* Vibration motor: plain GPIO level is correct for an ERM motor. */
     gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, vibration_active ? 1 : 0);
 
     bool red_on = s->risk_state == BALAT_RISK_DANGER;
@@ -366,8 +385,7 @@ static void usb_console_task(void *arg)
 
 void app_main(void)
 {
-    uint64_t output_mask = (1ULL << CONFIG_BALAT_BUZZER_GPIO) |
-                           (1ULL << CONFIG_BALAT_MOTOR_GPIO) |
+    uint64_t output_mask = (1ULL << CONFIG_BALAT_MOTOR_GPIO) |
                            (1ULL << CONFIG_BALAT_GPS_ENABLE_GPIO) |
                            (1ULL << CONFIG_BALAT_STATUS_LED_GPIO) |
                            (1ULL << CONFIG_BALAT_LED_RED_GPIO) |
@@ -384,7 +402,7 @@ void app_main(void)
                               .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
                               .source_clk = UART_SCLK_DEFAULT};
 
-    gpio_set_level(CONFIG_BALAT_BUZZER_GPIO, 0);
+    /* Silence all outputs before configuring GPIO and LEDC. */
     gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_STATUS_LED_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_LED_RED_GPIO, 0);
@@ -392,6 +410,33 @@ void app_main(void)
     gpio_set_level(CONFIG_BALAT_GPS_ENABLE_GPIO, 1);
     gpio_config(&out);
     gpio_config(&in);
+
+    /* Buzzer: configure LEDC timer and channel for 4 kHz PWM on GPIO3.
+     * The GPIO is routed through the LEDC signal matrix — do not also
+     * configure GPIO3 as a plain output or call gpio_set_level on it.
+     */
+    ledc_timer_config_t buzzer_timer = {
+        .speed_mode      = LEDC_LOW_SPEED_MODE,
+        .timer_num       = BUZZER_LEDC_TIMER,
+        .duty_resolution = BUZZER_DUTY_RES,
+        .freq_hz         = BUZZER_FREQ_HZ,
+        .clk_cfg         = LEDC_AUTO_CLK,
+    };
+    if (ledc_timer_config(&buzzer_timer) != ESP_OK) {
+        ESP_LOGE(TAG, "LEDC timer configuration failed; buzzer will be silent");
+    }
+    ledc_channel_config_t buzzer_channel = {
+        .speed_mode     = LEDC_LOW_SPEED_MODE,
+        .channel        = BUZZER_LEDC_CHANNEL,
+        .timer_sel      = BUZZER_LEDC_TIMER,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .gpio_num       = CONFIG_BALAT_BUZZER_GPIO,
+        .duty           = 0u,   /* silent at startup */
+        .hpoint         = 0,
+    };
+    if (ledc_channel_config(&buzzer_channel) != ESP_OK) {
+        ESP_LOGE(TAG, "LEDC channel configuration failed; buzzer will be silent");
+    }
     set_gps_power(true);
     uart_driver_install(GNSS_UART, 1024, 0, 0, NULL, 0);
     uart_param_config(GNSS_UART, &uart_cfg);

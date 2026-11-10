@@ -78,7 +78,11 @@
 - Rationale: One dashboard replay can exercise both the ESP32 firmware parser and the FPGA RTL parser, with each device producing its own decisions and telemetry.
 - Consequence: The FPGA demo uses a fixed horizontal road segment and a dashboard-generated synthetic NMEA trace. SW2 remains the physical FPGA cue-enable, SW1 forces invalid, and SW3 forces map invalid. JA1 is 3.3 V logic observation only; it is not electrically tied to the ESP32 PCB cue driver nets. Do not connect board outputs together or directly connect JA1 to an actuator.
 
-## ADR-014 — Staged ESP32 bench cues
+## ADR-015 — Buzzer driven by LEDC PWM, not plain GPIO
+- Status: Accepted for bench prototype
+- Decision: Drive the piezo buzzer on GPIO3 using the ESP32-C3 LEDC peripheral at 4 kHz, 50% duty cycle (LEDC timer 0, channel 0, 10-bit resolution). GPIO3 is routed through the LEDC signal matrix and must not be included in the plain GPIO output mask or controlled with `gpio_set_level()`. Duty is set to 0 to silence the buzzer and to `BUZZER_DUTY_ON` (512) to activate it.
+- Rationale: A piezo buzzer requires an oscillating signal to produce sound. `gpio_set_level()` produces only a DC level, which makes no audible tone — only a click on/off. 4 kHz is within the typical piezo resonance band and matches the testbench sketch in `tb/tb_cue_modules.v`.
+- Consequence: `app_main` now calls `ledc_timer_config` and `ledc_channel_config` before the UART init. `outputs_apply` calls `ledc_set_duty` / `ledc_update_duty` for the buzzer instead of `gpio_set_level`. The vibration motor (GPIO4) remains a plain GPIO level output, which is the correct drive method for an ERM motor. No change to any cue timing, cooldown, or risk logic.
 - Status: Accepted for controlled bench testing only
 - Decision: On valid GNSS, emit a bounded vibration-only pulse at CAUTION and a bounded buzzer-plus-vibration pulse at DANGER. Each cue remains limited to 500 ms and requires the physical GPIO6 hold-to-enable. A transition into DANGER may override the shared 30-second cooldown once; repeated cues at the same risk level remain cooldown-limited. Mock/replay mode continues to inhibit vibration.
 - Rationale: The user selected distinct warning and danger cues while retaining the existing actuator-duration bound and immediate physical disable.
