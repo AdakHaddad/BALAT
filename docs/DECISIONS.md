@@ -77,3 +77,9 @@
 - Decision: Add a separate `balat_basys3_dashboard_top` image that receives raw checksummed NMEA over the Basys 3 USB-UART, runs the RTL NMEA/coordinate/geometry/risk/cue pipeline, and returns the existing HerdSync telemetry record format. The dashboard reuses the ESP32 mock-trace controls and labels this source `BASYS3_NMEA_UART`. The original synthetic replay image and HerdSync telemetry-only image remain separate.
 - Rationale: One dashboard replay can exercise both the ESP32 firmware parser and the FPGA RTL parser, with each device producing its own decisions and telemetry.
 - Consequence: The FPGA demo uses a fixed horizontal road segment and a dashboard-generated synthetic NMEA trace. SW2 remains the physical FPGA cue-enable, SW1 forces invalid, and SW3 forces map invalid. JA1 is 3.3 V logic observation only; it is not electrically tied to the ESP32 PCB cue driver nets. Do not connect board outputs together or directly connect JA1 to an actuator.
+
+## ADR-014 — Staged ESP32 bench cues
+- Status: Accepted for controlled bench testing only
+- Decision: On valid GNSS, emit a bounded vibration-only pulse at CAUTION and a bounded buzzer-plus-vibration pulse at DANGER. Each cue remains limited to 500 ms and requires the physical GPIO6 hold-to-enable. A transition into DANGER may override the shared 30-second cooldown once; repeated cues at the same risk level remain cooldown-limited. Mock/replay mode continues to inhibit vibration.
+- Rationale: The user selected distinct warning and danger cues while retaining the existing actuator-duration bound and immediate physical disable.
+- Consequence: The firmware output mapping changes, but the GPIO interface does not. Bench-test with indicator/dummy loads first. This does not establish that cattle will interpret or respond to either cue; animal testing still requires welfare oversight and a controlled enclosed area.

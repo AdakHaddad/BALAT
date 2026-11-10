@@ -149,16 +149,78 @@ static int test_risk_and_cue(void)
     CHECK(risk.state == BALAT_RISK_INVALID && !risk.cue_req);
 
     balat_cue_init(&cue);
-    event = balat_cue_step(&cue, 100u, true, true, &cue_config);
+    event = balat_cue_step(&cue, 100u, true, true, false, &cue_config);
     CHECK(event.started && event.cue_active);
-    event = balat_cue_step(&cue, 600u, true, true, &cue_config);
+    event = balat_cue_step(&cue, 600u, true, true, false, &cue_config);
     CHECK(event.stopped && event.cooldown && !event.cue_active && event.duration_ms == 500u);
-    event = balat_cue_step(&cue, 30599u, true, true, &cue_config);
+    event = balat_cue_step(&cue, 30599u, true, true, false, &cue_config);
     CHECK(!event.cue_active && event.cooldown);
-    event = balat_cue_step(&cue, 30600u, true, true, &cue_config);
+    event = balat_cue_step(&cue, 30600u, true, true, false, &cue_config);
     CHECK(event.started && event.cue_active);
-    event = balat_cue_step(&cue, 30601u, false, true, &cue_config);
+    event = balat_cue_step(&cue, 30601u, false, true, false, &cue_config);
     CHECK(event.stopped && !cue.cue_en && !cue.cooldown);
+
+    balat_cue_init(&cue);
+    event = balat_cue_step(&cue, 100u, true, true, false, &cue_config);
+    CHECK(event.started && event.cue_active);
+    event = balat_cue_step(&cue, 600u, true, true, false, &cue_config);
+    CHECK(event.stopped && event.cooldown);
+    event = balat_cue_step(&cue, 1000u, true, true, false, &cue_config);
+    CHECK(!event.cue_active && event.cooldown);
+    event = balat_cue_step(&cue, 1100u, true, true, true, &cue_config);
+    CHECK(event.started && event.cue_active && !cue.cooldown);
+
+    balat_risk_init(&risk);
+    balat_risk_step(&risk, true, false, true, false, false, 1000000, 0u, &risk_config);
+    balat_risk_step(&risk, true, false, true, false, true, 250000, 0u, &risk_config);
+    CHECK(risk.state == BALAT_RISK_SAFE && !risk.cue_req);
+    balat_risk_step(&risk, true, false, true, false, true, 250000, 0u, &risk_config);
+    CHECK(risk.state == BALAT_RISK_CAUTION && risk.cue_req);
+    balat_risk_step(&risk, true, false, true, true, true, 40000, 0u, &risk_config);
+    CHECK(risk.state == BALAT_RISK_CAUTION);
+    balat_risk_step(&risk, true, false, true, true, true, 40000, 0u, &risk_config);
+    CHECK(risk.state == BALAT_RISK_DANGER && risk.cue_req);
+    balat_risk_step(&risk, true, true, true, false, true, 0, 0u, &risk_config);
+    CHECK(risk.state == BALAT_RISK_INVALID && !risk.cue_req);
+    return 0;
+}
+
+static int test_engine_danger_overrides_caution_cooldown(void)
+{
+    balat_map_t map;
+    balat_map_segment_t segment = {0u, -2000, 0, 2000, 0, 16384, 0, 1u, 0u};
+    balat_map_manifest_t manifest = balat_fixture_manifest;
+    balat_engine_t engine;
+    balat_engine_config_t config = {
+        .gate = {3000u, 5000u, 1500u, 30u, 0u, 500u, 100u, 2916u, false},
+        .traj = {30u, 1500u, 5000u}, .risk = {500, 600, 200, 300, 2u},
+        .cue = {500u, 30000u}, .use_gga = false, .reset_reason = "test"};
+
+    manifest.segment_count = 1u;
+    manifest.checksum = balat_map_checksum(&segment, 1u,
+                                           manifest.origin_lat_deg7,
+                                           manifest.origin_lon_deg7,
+                                           manifest.cos_lat_q14);
+    CHECK(balat_map_load(&map, &manifest, &segment));
+    balat_engine_init(&engine, &config, &map);
+
+    engine.gate.have_fix = true;
+    engine.gate.received_ms = 1000u;
+    engine.force_invalid = false;
+    engine.risk.state = BALAT_RISK_DANGER;
+    engine.risk.cue_req = true;
+    engine.cue.cooldown = true;
+    engine.cue.cooldown_start_ms = 900u;
+    engine.prev_state = BALAT_RISK_CAUTION;
+
+    balat_engine_tick(&engine, 1000u, true, false);
+    CHECK(engine.status.cue_active && engine.status.cue_started);
+    CHECK(!engine.status.cooldown);
+
+    balat_engine_tick(&engine, 1500u, true, false);
+    CHECK(!engine.status.cue_active && engine.status.cooldown);
+    balat_engine_tick(&engine, 1600u, true, false);
+    CHECK(!engine.status.cue_active && engine.status.cooldown);
     return 0;
 }
 
@@ -209,6 +271,7 @@ int main(void)
     CHECK(test_engine_requires_fresh_gga() == 0);
     CHECK(test_geometry_vectors() == 0);
     CHECK(test_risk_and_cue() == 0);
+    CHECK(test_engine_danger_overrides_caution_cooldown() == 0);
     CHECK(test_engine_replay_and_faults() == 0);
     puts("PASS balat_core host regression");
     return 0;

@@ -15,7 +15,10 @@ follow the bench-power restrictions in the guide and
 ## Safety boundary
 
 - GPIO 3 and GPIO 4 drive only the PCB's existing protected buzzer and motor
-  transistor stages. They are never direct motor/speaker outputs.
+  transistor stages. For separate breadboard modules, connect them only to
+  3.3 V-compatible `SIG`/`IN` logic inputs. Module VCC must match its rating;
+  share GND. A bare motor needs a suitable driver stage and must never connect
+  directly to an ESP32 GPIO.
 - Reset, an invalid/stale/uncertain/corrupt fix, map failure, an out-of-range
   coordinate, a trajectory fault, or manual disable force cue output off.
 - The PCB report button on GPIO 6 is used as a **hold-to-enable** input: the
@@ -37,11 +40,14 @@ follow the bench-power restrictions in the guide and
 | USB console | native USB Serial/JTAG | commands and logs |
 
 Defaults are Kconfig-configurable in `main/Kconfig.projbuild`. During a bounded
-cue the firmware activates both protected PCB stages. The standalone
-breadboard's LEDs indicate green=SAFE, yellow=CAUTION/COOLDOWN, red=DANGER, and
-blinking red=INVALID. GPIO7 and GPIO21 are not connected on PCB v1; its fitted
-GPIO10 LED shows green only for SAFE. Use the breadboard for full three-color
-status.
+valid-GNSS CAUTION cue, the firmware activates only the protected vibration
+stage; DANGER activates both protected stages. A new DANGER transition may
+override the 30-second cooldown once; repeated cues at the same risk level
+remain cooldown-limited. In mock mode the vibration output stays off. The
+standalone breadboard's LEDs indicate green=SAFE, yellow=CAUTION/COOLDOWN,
+red=DANGER, and blinking red=INVALID. GPIO7 and GPIO21 are not connected on
+PCB v1; its fitted GPIO10 LED shows green only for SAFE. Use the breadboard
+for full three-color status.
 
 ## Runtime contract
 

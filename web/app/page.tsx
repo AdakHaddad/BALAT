@@ -787,14 +787,19 @@ export default function Home() {
               <strong className={`bench-state ${tone[selected.risk]}`}>
                 {selected.risk === "INVALID" && mockPointActive ? `${benchRiskLabel(selected.risk, true)} · red LED · cue held` : selected.risk === "INVALID" ? "INVALID · red flashes · cue held" : selected.risk === "COOLDOWN" ? "CAUTION · yellow LED" : `${selected.risk} · ${selected.risk === "SAFE" ? "green" : selected.risk === "CAUTION" ? "yellow" : "red"} LED`}
               </strong>
-              <small>{selected.risk === "INVALID" && mockPointActive ? `Fix not accepted · ${telemetry?.fault ?? "check mock input"} · cue held` : selected.risk === "INVALID" ? `Fix invalid · ${telemetry?.fault ?? "check mock input"} · cue held` : `${selected.distance} from mapped road · synthetic GPS input · motor off`}</small>
+              <small>{selected.risk === "INVALID" && mockPointActive ? `Fix not accepted · ${telemetry?.fault ?? "check mock input"} · cue held` : selected.risk === "INVALID" ? `Fix invalid · ${telemetry?.fault ?? "check mock input"} · cue held` : `${selected.distance} from mapped road · synthetic GPS input · vibration off in mock mode`}</small>
             </div>
             <div className="bench-wiring">
-              <span className="eyebrow">LED WIRING</span>
+              <span className="eyebrow">BREADBOARD WIRING</span>
               <p><b>GPIO7</b><span>220 Ω → Red LED anode (+)</span></p>
               <p><b>GPIO21</b><span>220 Ω → Yellow LED anode (+)</span></p>
               <p><b>GPIO10</b><span>220 Ω → Green LED anode (+)</span></p>
               <p><b>GND</b><span>All three LED cathodes (−)</span></p>
+              <p><b>GPIO3</b><span>→ Active buzzer SIG (3.3 V logic compatible)</span></p>
+              <p><b>GPIO4</b><span>→ Vibration driver IN, not bare motor</span></p>
+              <p><b>GND</b><span>→ Buzzer and vibration module GND</span></p>
+              <p><b>3V3 / 5V</b><span>→ Module VCC at rated voltage only</span></p>
+              <small>On valid GNSS: CAUTION vibrates; DANGER uses buzzer + vibration. Mock mode keeps vibration off.</small>
             </div>
             <MapPanel
               animals={visibleAnimals}

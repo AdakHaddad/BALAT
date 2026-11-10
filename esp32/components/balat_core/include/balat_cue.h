@@ -30,6 +30,7 @@ balat_cue_result_t balat_cue_step(balat_cue_state_t *state,
                                   uint32_t now_ms,
                                   bool enable,
                                   bool request,
+                                  bool override_cooldown,
                                   const balat_cue_config_t *config);
 
 #endif

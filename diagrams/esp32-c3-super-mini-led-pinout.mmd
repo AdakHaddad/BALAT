@@ -1,42 +1,28 @@
-graph LR
-  subgraph LEFT["LEFT EDGE<br/>antenna to USB"]
-    direction TB
-    L21["GPIO21 / YELLOW LED"]
-    L20["GPIO20 / GNSS RX"]
-    L10["GPIO10 / GREEN LED"]
-    L9["GPIO9"]
-    L8["GPIO8"]
-    L7["GPIO7 / RED LED"]
-    L6["GPIO6 / BUTTON"]
-    L5["GPIO5 / GPS power"]
-  end
+graph TB
+  HEADER["ESP32-C3 Super Mini / component side"]
+  LEFT["LEFT EDGE / antenna to USB<br/>GPIO21 / YELLOW LED<br/>GPIO20 / GNSS RX<br/>GPIO10 / GREEN LED<br/>GPIO9<br/>GPIO8<br/>GPIO7 / RED LED<br/>GPIO6 / BUTTON<br/>GPIO5 / GPS power"]
+  BOARD["ANTENNA end<br/><br/>ESP32-C3<br/><br/>USB-C end"]
+  RIGHT["RIGHT EDGE / antenna to USB<br/>GPIO0<br/>GPIO1<br/>GPIO2<br/>GPIO3 / buzzer<br/>GPIO4 / vibration<br/>3V3<br/>GND<br/>5V"]
 
-  subgraph BOARD["ESP32-C3 Super Mini<br/>component side"]
-    direction TB
-    ANT["ANTENNA end"]
-    CHIP["ESP32-C3"]
-    USB["USB-C end"]
-  end
+  GPIO7["GPIO7"] --> RRED["220 ohm"] --> RED["Red LED anode (+)"]
+  GPIO21["GPIO21"] --> RYELLOW["220 ohm"] --> YELLOW["Yellow LED anode (+)"]
+  GPIO10["GPIO10"] --> RGREEN["220 ohm"] --> GREEN["Green LED anode (+)"]
+  GND["ESP32 GND"] --> LEDCATHODES["All LED cathodes (-)"]
+  GPIO3["GPIO3"] --> BSIG["Active buzzer SIG"]
+  GPIO4["GPIO4"] --> VIN["Vibration module IN"]
+  GND --> MODGND["Buzzer and vibration module GND"]
+  SUPPLY["Module VCC: use 3V3 or 5V, only if rated"]
+  LOGIC["SIG and IN must accept 3.3V active-high logic. A bare 2-wire motor needs a protected driver."]
+  BEHAVIOR["Valid GNSS: CAUTION vibrates; DANGER uses buzzer + vibration. Mock mode keeps vibration off."]
 
-  subgraph RIGHT["RIGHT EDGE<br/>antenna to USB"]
-    direction TB
-    R0["GPIO0"]
-    R1["GPIO1"]
-    R2["GPIO2"]
-    R3["GPIO3 / buzzer"]
-    R4["GPIO4 / motor driver"]
-    V33["3V3"]
-    GND["GND"]
-    V5["5V"]
-  end
+  HEADER ~~~ LEFT ~~~ BOARD ~~~ RIGHT
+  RIGHT ~~~ GPIO3
+  RRED ~~~ RYELLOW ~~~ RGREEN
+  LEDCATHODES ~~~ BSIG ~~~ VIN ~~~ MODGND ~~~ SUPPLY ~~~ LOGIC ~~~ BEHAVIOR
 
-  ANT ~~~ CHIP ~~~ USB
-  L21 ~~~ L20 ~~~ L10 ~~~ L9 ~~~ L8 ~~~ L7 ~~~ L6 ~~~ L5
-  R0 ~~~ R1 ~~~ R2 ~~~ R3 ~~~ R4 ~~~ V33 ~~~ GND ~~~ V5
-  L10 ~~~ CHIP ~~~ R4
   classDef red fill:#fee2e2,stroke:#b91c1c,color:#7f1d1d
   classDef yellow fill:#fef3c7,stroke:#a16207,color:#713f12
   classDef green fill:#dcfce7,stroke:#15803d,color:#14532d
-  class L7 red
-  class L21 yellow
-  class L10 green
+  class RED red
+  class YELLOW yellow
+  class GREEN green

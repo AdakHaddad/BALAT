@@ -43,8 +43,8 @@ GPIO5. USB console uses the ESP32-C3 native USB Serial/JTAG interface.
 
 | ESP32-C3 signal | Bench connection |
 |---|---|
-| GPIO3 / `BUZ_CTRL` | PCB Q1 driver control net |
-| GPIO4 / `MOT_CTRL` | PCB Q2 driver control net |
+| GPIO3 / `BUZ_CTRL` | PCB Q1 buzzer-driver control; for a separate breadboard module, connect to 3.3 V-compatible active-buzzer `SIG` |
+| GPIO4 / `MOT_CTRL` | PCB Q2 vibration-driver control; for a separate breadboard module, connect to driver `IN`, never to a bare motor |
 | GPIO5 / `GPS_EN` | PCB Q3 high-side GPS switch; active low |
 | GPIO6 / `BTN` | Hold button to GND to physically permit bounded cues |
 | GPIO10 / `LED_CTRL` | PCB D3 status LED through existing R10 220 Ω resistor |
@@ -53,11 +53,25 @@ GPIO5. USB console uses the ESP32-C3 native USB Serial/JTAG interface.
 | GPIO20 / UART1 RX | GPS module TX, 3.3 V UART input |
 | Native USB Serial/JTAG | Dashboard bridge commands and firmware logs |
 | GND | Common logic and peripheral ground |
+| 3V3 / 5V | Module `VCC` only at its marked/datasheet-rated voltage; verify the supply can provide module current |
 
-Never connect a motor or buzzer directly to an ESP32 pin. The PCB's protected
-driver stages handle the loads, but keep the motor disconnected during the
-first logic checks. Mock GPS cannot arm outputs; only a physically held PCB
-button can do that.
+For standalone breadboard modules, GPIO3 and GPIO4 connect only to their
+3.3 V-compatible, active-high logic inputs (`SIG`/`IN`). A 3-pin vibration
+module with `IN`, `VCC`, and `GND` and an integrated driver needs no additional
+driver board. Connect module GND to ESP32 GND. Use 3V3 or 5V at module VCC only
+when that matches its rating; use a separate current-limited supply if the
+module's current exceeds the ESP32 board supply rating. A bare two-wire
+vibration motor removed from a PS controller still needs a suitable protected
+driver stage. Never connect a motor or buzzer load directly to an ESP32 pin.
+Keep actuator loads disconnected during first logic checks. Mock GPS cannot
+arm cues; only a physically held PCB button can do that.
+
+Current firmware behavior on valid GNSS: `CAUTION` gives a bounded vibration
+pulse on GPIO4 only; `DANGER` activates the protected buzzer and vibration
+outputs together. GPIO6 must be held to enable cues. Each pulse is limited to
+500 ms. A transition into DANGER may override the 30-second cooldown once so
+the danger cue is not delayed; repeated cues at the same risk level still
+follow the cooldown. In mock/demo mode, vibration is forced off.
 
 ## First power-up and firmware
 

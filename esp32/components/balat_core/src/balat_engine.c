@@ -261,6 +261,7 @@ void balat_engine_tick(balat_engine_t *engine,
     bool map_valid;
     bool stale;
     bool request;
+    bool danger_escalation;
 
     if (engine == NULL) {
         return;
@@ -279,9 +280,14 @@ void balat_engine_tick(balat_engine_t *engine,
     }
 
     request = engine->risk.cue_req && !stale && map_valid;
+    danger_escalation = request &&
+                        engine->risk.state == BALAT_RISK_DANGER &&
+                        engine->prev_state != BALAT_RISK_DANGER &&
+                        engine->cue.cooldown;
 
     cue_result = balat_cue_step(&engine->cue, now_ms,
                                 cue_enable && !manual_disable, request,
+                                danger_escalation,
                                 &engine->config.cue);
 
     if (cue_result.started) {

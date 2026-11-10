@@ -14,6 +14,7 @@ balat_cue_result_t balat_cue_step(balat_cue_state_t *state,
                                   uint32_t now_ms,
                                   bool enable,
                                   bool request,
+                                  bool override_cooldown,
                                   const balat_cue_config_t *config)
 {
     balat_cue_result_t result;
@@ -36,13 +37,17 @@ balat_cue_result_t balat_cue_step(balat_cue_state_t *state,
     }
 
     if (state->cooldown) {
-        if ((uint32_t)(now_ms - state->cooldown_start_ms) >=
-            config->cooldown_ms) {
+        if (override_cooldown && request) {
             state->cooldown = false;
         } else {
-            result.cooldown = true;
-            result.duration_ms = state->last_duration_ms;
-            return result;
+            if ((uint32_t)(now_ms - state->cooldown_start_ms) >=
+                config->cooldown_ms) {
+                state->cooldown = false;
+            } else {
+                result.cooldown = true;
+                result.duration_ms = state->last_duration_ms;
+                return result;
+            }
         }
     }
 

@@ -60,9 +60,18 @@ void balat_risk_step(balat_risk_t *risk,
         risk->state = BALAT_RISK_INVALID;
         risk->confirm_cnt = 0u;
     } else if (sample_valid) {
-        if (cooldown) {
+        if (cooldown && risk->state != BALAT_RISK_CAUTION &&
+            risk->state != BALAT_RISK_DANGER) {
             risk->state = BALAT_RISK_COOLDOWN;
-            risk->confirm_cnt = 0u;
+            if (dist2_cm2 <= danger_enter2 && approaching) {
+                (void)confirm_qualified(risk, config->confirm_samples,
+                                        BALAT_RISK_DANGER);
+            } else if (dist2_cm2 <= caution_enter2 && approaching) {
+                (void)confirm_qualified(risk, config->confirm_samples,
+                                        BALAT_RISK_CAUTION);
+            } else {
+                risk->confirm_cnt = 0u;
+            }
         } else {
             switch (risk->state) {
             case BALAT_RISK_INVALID:
@@ -110,6 +119,14 @@ void balat_risk_step(balat_risk_t *risk,
                 if (!cooldown) {
                     risk->state = BALAT_RISK_SAFE;
                     risk->confirm_cnt = 0u;
+                } else if (dist2_cm2 <= danger_enter2 && approaching) {
+                    (void)confirm_qualified(risk, config->confirm_samples,
+                                            BALAT_RISK_DANGER);
+                } else if (dist2_cm2 <= caution_enter2 && approaching) {
+                    (void)confirm_qualified(risk, config->confirm_samples,
+                                            BALAT_RISK_CAUTION);
+                } else {
+                    risk->confirm_cnt = 0u;
                 }
                 break;
 
@@ -128,6 +145,7 @@ void balat_risk_step(balat_risk_t *risk,
     if (!map_valid) {
         risk->fault |= BALAT_FAULT_MAP;
     }
-    risk->cue_req = (risk->state == BALAT_RISK_DANGER) && !stale && map_valid &&
-                    !cooldown;
+    risk->cue_req = (risk->state == BALAT_RISK_CAUTION ||
+                     risk->state == BALAT_RISK_DANGER) &&
+                    !stale && map_valid;
 }

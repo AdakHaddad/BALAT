@@ -141,8 +141,14 @@ static void outputs_apply(void)
     bool active = s->cue_active && s->cue_enable && !s->manual_disable &&
                   s->risk_state != BALAT_RISK_INVALID;
 
-    gpio_set_level(CONFIG_BALAT_BUZZER_GPIO, active ? 1 : 0);
-    gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, active && !mock_mode ? 1 : 0);
+    bool buzzer_active = active && s->risk_state == BALAT_RISK_DANGER;
+    bool vibration_active =
+        active && (s->risk_state == BALAT_RISK_CAUTION ||
+                   s->risk_state == BALAT_RISK_DANGER) &&
+        !mock_mode;
+
+    gpio_set_level(CONFIG_BALAT_BUZZER_GPIO, buzzer_active ? 1 : 0);
+    gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, vibration_active ? 1 : 0);
 
     bool red_on = s->risk_state == BALAT_RISK_DANGER;
     bool yellow_on = s->risk_state == BALAT_RISK_CAUTION ||
@@ -196,7 +202,7 @@ static void print_help(void)
     puts("PCB map: BUZ=GPIO3 MOT=GPIO4 GPS_EN=GPIO5 BTN=GPIO6 LED=GPIO10 GPS_RX=GPIO20");
     puts("Status LEDs: GREEN=GPIO10 RED=GPIO7 YELLOW=GPIO21; red/yellow are bench-only.");
     puts("USB mock data cannot arm cues; hold the PCB button to enable bounded outputs.");
-        puts("Mock mode: status LED follows risk; buzzer is button-gated; motor remains off.");
+        puts("Mock mode: status LED follows risk; buzzer is button-gated; vibration remains off.");
 }
 
 static void process_command(char *line)

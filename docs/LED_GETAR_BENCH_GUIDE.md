@@ -16,13 +16,14 @@ TP4056, dan panel surya boleh dilewati seluruhnya.
 - Breadboard dan kabel jumper.
 - LED merah, kuning, dan hijau; masing-masing memakai resistor seri 220 Ω
   tersendiri.
-- Driver motor siap pakai yang menerima logika 3,3 V dan memiliki proteksi
-  beban induktif/flyback, dengan rating sesuai motor.
-- Motor getar/rumble yang dilepas dari stik/controller PlayStation bekas
-  (motor DC kecil dengan pemberat eksentrik), dengan tegangan kerja dan arus
-  stall yang diketahui. Jangan tertukar dengan modul analog joystick.
-- Catu DC bench terisolasi dan current-limited untuk motor; setel sesuai
-  spesifikasi motor dan driver. Jangan gunakan baterai.
+- Modul buzzer aktif dengan pin `SIG`, `VCC`, dan `GND`; `SIG` harus menerima
+  logika aktif-tinggi 3,3 V.
+- Modul getar tiga pin `IN`, `VCC`, dan `GND` dengan driver internal; `IN`
+  harus kompatibel dengan logika aktif-tinggi 3,3 V.
+- Jika perangkatnya hanya motor getar PS dua-kabel tanpa modul driver, perlu
+  driver terpisah yang sesuai. Jangan tertukar dengan modul analog joystick.
+- Catu DC bench terisolasi dan current-limited bila modul membutuhkan suplai
+  terpisah. Tegangan harus sesuai rating modul. Jangan gunakan baterai.
 - Multimeter. Tombol tekan opsional untuk GPIO6 jika memakai firmware demo
   yang memerlukan hold-to-enable.
 
@@ -46,8 +47,10 @@ ESP32-C3 yang dipakai; jangan mengandalkan posisi pin tanpa memeriksa silkscreen
 | GPIO7 | Ke resistor 220 Ω, lalu ke anoda LED merah |
 | GPIO21 | Ke resistor 220 Ω, lalu ke anoda LED kuning |
 | GPIO10 | Ke resistor 220 Ω, lalu ke anoda LED hijau |
-| GND | Ke katoda ketiga LED dan GND logika driver motor |
-| GPIO4 (`MOT_CTRL`) | Ke input logika driver motor (`IN`/`SIG`) |
+| GPIO3 (`BUZ_CTRL`) | Ke `SIG`/input modul buzzer aktif yang kompatibel 3,3 V |
+| GPIO4 (`MOT_CTRL`) | Ke `IN` modul getar tiga-pin (driver internal) |
+| GND | Ke katoda ketiga LED dan GND ESP32, buzzer, dan driver getar |
+| 3V3 atau 5V | Ke `VCC` modul sesuai rating yang tercetak/datasheet; jangan menebak |
 | GPIO6 (`BTN`) | Opsional: tombol antara GPIO6 dan GND; firmware PCB memakai tombol aktif-rendah sebagai hold-to-enable |
 | USB | Ke ESP32-C3 saja; jangan sambungkan ke PCB kalung atau rel baterai |
 
@@ -57,12 +60,21 @@ dan GPIO10 hijau dikendalikan firmware sebagai status risiko. GPIO7 dan GPIO21
 tidak dirutekan pada PCB kalung v1, jadi LED merah/kuning hanya bekerja pada
 ESP32-C3 lepas di breadboard. Jangan menambah wiring ini ke PCB kalung.
 
+`SIG` buzzer dan `IN` modul getar tiga-pin adalah input logika, bukan terminal
+beban. Karena modul getar sudah memiliki driver, GPIO4 dapat dihubungkan
+langsung ke `IN`; tidak perlu papan driver tambahan. Pastikan kedua input
+menerima sinyal aktif-tinggi 3,3 V dari ESP32. Hubungkan VCC modul ke rel 3V3
+atau 5V hanya jika sesuai ratingnya dan sumbernya mampu menyuplai arus modul.
+Gunakan catu bench current-limited terpisah bila perlu, dengan GND bersama.
+Jangan memberi daya motor mentah dari GPIO atau pin daya ESP32.
+
 Lihat [gambar pinout dan wiring](../diagrams/esp32-c3-super-mini-led-pinout.png).
 Gambar menghadap sisi komponen dengan USB-C di bawah. Ikuti nama GPIO tercetak
 pada board; jangan menentukan pin hanya dari posisi fisik bila revisi board
 berbeda.
 
-Sambungkan sisi motor mengikuti diagram/pinout driver yang digunakan:
+Hanya jika yang tersedia adalah motor dua-kabel tanpa modul driver, gunakan
+driver terpisah sesuai motor dan ikuti diagram/pinout drivernya:
 
 ```text
 ESP32 GPIO4 ──> IN driver
@@ -79,8 +91,8 @@ driver.
 
 ## Urutan uji
 
-1. Dengan semua daya terputus, periksa polaritas LED, jalur ground, serta
-   sambungan `IN`, `VM/V+`, dan `OUT` pada driver. Motor tetap dilepas.
+1. Dengan semua daya terputus, periksa polaritas LED, jalur ground, dan label
+   pin modul. Biarkan VCC modul terputus.
 2. Nyalakan ESP32-C3 dari USB saja. Pastikan tidak ada hubungan singkat antara
    3V3 dan GND.
 3. Uji tiga LED terlebih dahulu dengan mock trace. Statusnya: hijau = SAFE,
@@ -91,11 +103,9 @@ driver.
    cue; biarkan catu motor mati dan gunakan indikator input driver atau alat
    ukur. Jika belum ada jalur uji tersebut, berhenti setelah uji LED—jangan
    memaksa GPIO4 dengan jumper.
-5. Setelah tegangan kerja dan arus stall motor rumble diketahui, pastikan
-   keduanya berada dalam rating driver. Sambungkan motor saat catu masih mati,
-   atur tegangan dan current limit bench supply sesuai spesifikasi motor serta
-   driver, lalu nyalakan. Jika rating motor tidak dapat ditemukan, jangan
-   lanjutkan uji dengan daya.
+5. Setelah rating modul dan kebutuhan arusnya dipastikan, sambungkan VCC ke
+   suplai yang sesuai dan current-limited. Jangan lanjutkan bila rating modul
+   atau kemampuan sumber dayanya tidak diketahui.
 6. Lepas catu atau USB segera bila ada panas, bau, reset ESP32, atau arus tak
    terduga.
 7. Lepaskan tombol GPIO6 untuk menonaktifkan cue kapan saja. Jauhkan semua uji
@@ -109,10 +119,17 @@ driver.
 - Pada jalur GNSS normal, cue dibatasi maksimum 500 ms dengan jeda minimum
   30 detik. GPIO6 harus ditahan untuk mengizinkan cue; reset, fix tidak valid,
   atau tombol yang dilepas menonaktifkan keluaran.
-- Cue normal firmware juga mengaktifkan keluaran buzzer GPIO3. Untuk uji ini
-  jangan sambungkan buzzer. Jangan menjumper GPIO4 untuk melewati pembatas
-  firmware. Jika uji getar perlu dilakukan sebelum ada GNSS valid, gunakan
-  firmware uji bench terpisah yang dibatasi dan ditinjau terlebih dahulu.
+- Pada GNSS valid, `CAUTION` memberi pulsa getar GPIO4 saja. `DANGER`
+  mengaktifkan GPIO3 (buzzer) dan GPIO4 (getar) bersama. GPIO6 harus ditahan
+  untuk mengizinkan cue; reset, fix tidak valid, atau tombol yang dilepas
+  menonaktifkan keluaran. Setiap pulsa maksimum 500 ms.
+- Transisi baru ke `DANGER` boleh melewati cooldown 30 detik agar cue bahaya
+  tidak menunggu. Pengulangan pada tingkat risiko yang sama tetap mengikuti
+  cooldown. Mode mock memaksa GPIO4 tetap mati, jadi replay dashboard tidak
+  membuktikan getaran.
+- Jangan menjumper GPIO3/GPIO4 untuk melewati pembatas firmware. Jika perlu
+  menguji modul sebelum ada GNSS valid, gunakan firmware uji bench terpisah
+  yang dibatasi dan ditinjau terlebih dahulu.
 
 Setup ini hanya memvalidasi rangkaian di meja. Ini bukan uji efektivitas perilaku
 hewan dan bukan perangkat keselamatan jalan.
