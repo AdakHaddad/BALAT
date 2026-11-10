@@ -52,6 +52,9 @@ const BALAT_BLE_SERVICE = "7f510001-1b15-4f0d-8e3a-7c522f8b96a1";
 const BALAT_BLE_CONTROL = "7f510002-1b15-4f0d-8e3a-7c522f8b96a1";
 const BALAT_BLE_STATUS = "7f510003-1b15-4f0d-8e3a-7c522f8b96a1";
 const BLE_REPLAY_FIX_COUNT = 201;
+const subscribeToHostname = () => () => {};
+const getBrowserHostname = () => window.location.hostname;
+const getServerHostname = () => "";
 const InteractiveRoadMap = dynamic(() => import("./InteractiveRoadMap"), {
   ssr: false,
   loading: () => <div className="map-loading">Loading OpenStreetMap…</div>,
@@ -67,6 +70,29 @@ export function getVisibleLivePoint(
 
 export function benchRiskLabel(risk: Risk, mockPointActive: boolean): string {
   return risk === "INVALID" && mockPointActive ? "WAITING FOR FIX" : risk;
+}
+
+export function getApiBase(configuredApiBase: string | undefined, hostname: string): string {
+  const configured = configuredApiBase?.trim().replace(/\/$/, "");
+  if (configured) return configured;
+  return ["localhost", "127.0.0.1", "[::1]"].includes(hostname) ? "http://localhost:8888" : "";
+}
+
+export function stepMockPointToward(
+  current: Pick<MockMapPoint, "x_cm" | "y_cm">,
+  target: Pick<MockMapPoint, "x_cm" | "y_cm">,
+  elapsedMs: number,
+): { x_cm: number; y_cm: number } {
+  const dx = target.x_cm - current.x_cm;
+  const dy = target.y_cm - current.y_cm;
+  const distance = Math.hypot(dx, dy);
+  const maxStepCm = Math.max(0, elapsedMs) * 0.5;
+  if (distance <= maxStepCm || distance === 0) return { x_cm: target.x_cm, y_cm: target.y_cm };
+  const scale = maxStepCm / distance;
+  return {
+    x_cm: current.x_cm + Math.trunc(dx * scale),
+    y_cm: current.y_cm + Math.trunc(dy * scale),
+  };
 }
 
 const demoModes: Record<DemoMode, { label: string; distance: number; velocity: number; risk: Risk; note: string }> = {
@@ -311,7 +337,7 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchS
         </div>}
       </div>}
       <div className="map-footer">
-        <span>{esp32Source ? roadMap?.available ? `${roadMap.segment_count ?? roadMap.segments.length} ESP32 OSM segments · click/drag mock point${shownPoint && roadDistance !== null ? ` · ${roadDistance.toFixed(1)} m to nearest road` : ""}` : "ESP32 road manifest unavailable · connect the local bridge" : fpgaSource ? "Single FPGA demo segment" : "Road geometry: local manifest v0.4.2"}</span>
+        <span>{esp32Source ? roadMap?.available ? `${roadMap.segment_count ?? roadMap.segments.length} ESP32 OSM segments · click/drag mock point${shownPoint && roadDistance !== null ? ` · ${roadDistance.toFixed(1)} m to nearest road` : ""}` : "Bundled ESP32 road map unavailable" : fpgaSource ? "Single FPGA demo segment" : "Road geometry: local manifest v0.4.2"}</span>
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
       </div>
       {esp32Source && <div className="map-point-status" role="status" aria-live="polite">{pointStatus || "Click to place the mock location, then drag toward a mapped road for approach detection."}</div>}
@@ -354,21 +380,27 @@ export default function Home() {
   const [bleControlBusy, setBleControlBusy] = useState(false);
   const [bleReplayRunning, setBleReplayRunning] = useState(false);
   const [mockPointStatus, setMockPointStatus] = useState("");
-  const lastMockSend = useRef(0);
   const pendingMockPoint = useRef<MockMapPoint | null>(null);
   const mockPointTimer = useRef<number | null>(null);
+  const bleMockTarget = useRef<MockMapPoint | null>(null);
+  const bleMockPosition = useRef<{ x_cm: number; y_cm: number } | null>(null);
+  const bleMockTimer = useRef<number | null>(null);
+  const bleMockBusy = useRef(false);
+  const bleMockLastStep = useRef(0);
 
-  const apiBase = process.env.NEXT_PUBLIC_BALAT_API_URL?.replace(/\/$/, "") || "http://localhost:8888";
+  const hostname = useSyncExternalStore(subscribeToHostname, getBrowserHostname, getServerHostname);
+  const apiBase = getApiBase(process.env.NEXT_PUBLIC_BALAT_API_URL, hostname);
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(`${apiBase}/api/map`, { cache: "no-store" })
+    void fetch(apiBase ? `${apiBase}/api/map` : "/road_map.json", { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error("Road map request failed");
         return response.json();
       })
-      .then((payload: { reference?: FirmwareRoadMap }) => {
-        if (!cancelled) setRoadMap(payload.reference?.available ? payload.reference : null);
+      .then((payload: { reference?: FirmwareRoadMap } | FirmwareRoadMap) => {
+        const reference = "available" in payload ? payload : payload.reference;
+        if (!cancelled) setRoadMap(reference?.available ? reference : null);
       })
       .catch(() => {
         if (!cancelled) setRoadMap(null);
@@ -382,6 +414,13 @@ export default function Home() {
       return () => window.clearInterval(timer);
     }
     let cancelled = false;
+    if (!apiBase) {
+      const timer = window.setInterval(() => setNow(new Date().toLocaleTimeString("en-GB", { hour12: false })), 1000);
+      return () => {
+        cancelled = true;
+        window.clearInterval(timer);
+      };
+    }
 
     const pollTelemetry = async () => {
       try {
@@ -439,6 +478,11 @@ export default function Home() {
     };
   }, [apiBase, connection, bleCharacteristic]);
 
+  useEffect(() => () => {
+    if (bleMockTimer.current !== null) window.clearInterval(bleMockTimer.current);
+    if (mockPointTimer.current !== null) window.clearTimeout(mockPointTimer.current);
+  }, []);
+
   const esp32Source = Boolean(bleCharacteristic) || (connection === "live" && (telemetry?.source === "ESP32_UART" || telemetry?.source === "ESP32_BLE"));
   const fpgaNmeaSource = connection === "live" && telemetry?.source === "BASYS3_NMEA_UART";
   const benchSource = esp32Source || fpgaNmeaSource;
@@ -451,7 +495,7 @@ export default function Home() {
   const livePoint = getVisibleLivePoint(telemetry, benchSource);
   const sourceLabel = connection === "live"
     ? telemetry?.source === "ESP32_BLE" ? "LIVE ESP32 BLE" : telemetry?.source === "ESP32_UART" ? "LIVE ESP32 TELEMETRY" : telemetry?.source === "BASYS3_UART" || telemetry?.source === "BASYS3_NMEA_UART" ? "LIVE FPGA TELEMETRY" : "SYNTHETIC TRACE"
-    : connection === "connecting" ? "CONNECTING TO BRIDGE" : "SYNTHETIC TRACE FALLBACK";
+    : connection === "connecting" ? apiBase ? "CONNECTING TO BRIDGE" : "CONNECT ESP32 BLE" : apiBase ? "SYNTHETIC TRACE FALLBACK" : "CONNECT ESP32 BLE";
   const isExplainerView = view === "How BALAT works";
   const manualMockPoint = mockGps?.manual_point &&
     typeof mockGps.point_x_cm === "number" && Number.isFinite(mockGps.point_x_cm) &&
@@ -461,9 +505,13 @@ export default function Home() {
   const selectedMockPoint = mockPoint ?? manualMockPoint;
   const navItems = ["Overview", "Herd monitor", "Road memory", "Telemetry log", "How BALAT works"];
   const serialReplaySource = connection === "live" && (telemetry?.source === "ESP32_UART" || telemetry?.source === "BASYS3_NMEA_UART");
+  const mockPointActive = Boolean(mockPoint || mockGps?.manual_point);
   const applyBleFrame = (frame: TelemetryState) => {
     setTelemetry(frame);
     setConnection("live");
+    if (!bleMockTarget.current && (frame.fix_valid || frame.seq > 0)) {
+      bleMockPosition.current = { x_cm: frame.x_cm, y_cm: frame.y_cm };
+    }
     if (frame.seq >= BLE_REPLAY_FIX_COUNT) setBleReplayRunning(false);
     setAnimals((items) => items.map((animal, index) => index === 0 ? {
       ...animal,
@@ -495,6 +543,13 @@ export default function Home() {
       device.addEventListener("gattserverdisconnected", () => {
         setBleCharacteristic(null);
         setBleReplayRunning(false);
+        setTelemetry(null);
+        setMockGps(null);
+        setAnimals(initialAnimals);
+        setActiveId(initialAnimals[0].id);
+        bleMockTarget.current = null;
+        if (bleMockTimer.current !== null) window.clearInterval(bleMockTimer.current);
+        bleMockTimer.current = null;
         setBleStatus("ESP32-C3 disconnected.");
         setConnection("connecting");
       });
@@ -534,17 +589,58 @@ export default function Home() {
   const moveMockCow = (point: MockMapPoint) => {
     setMockPoint(point);
     if (bleCharacteristic) {
-      if (bleReplayRunning || performance.now() - lastMockSend.current < 150) return;
-      lastMockSend.current = performance.now();
-      const packet = new Uint8Array(9);
-      const view = new DataView(packet.buffer);
-      packet[0] = 0x10;
-      view.setInt32(1, point.x_cm, true);
-      view.setInt32(5, point.y_cm, true);
-      void bleCharacteristic.writeValue(packet).then(() => setMockPointStatus("BLE mock fix sent.")).catch((error) => setMockPointStatus(error instanceof Error ? error.message : "BLE position update failed."));
+      if (bleReplayRunning) {
+        setMockPointStatus("Pause firmware replay before moving the mock point.");
+        return;
+      }
+      bleMockTarget.current = point;
+      if (!bleMockPosition.current && telemetry && (telemetry.fix_valid || telemetry.seq > 0)) {
+        bleMockPosition.current = { x_cm: telemetry.x_cm, y_cm: telemetry.y_cm };
+      }
+      if (bleMockTimer.current === null) {
+        bleMockLastStep.current = performance.now();
+        bleMockTimer.current = window.setInterval(async () => {
+          if (bleMockBusy.current || !bleCharacteristic || !bleMockTarget.current) return;
+          const target = bleMockTarget.current;
+          const current = bleMockPosition.current;
+          const now = performance.now();
+          const elapsedMs = Math.min(200, Math.max(0, now - bleMockLastStep.current));
+          const next = current ? stepMockPointToward(current, target, elapsedMs) : target;
+          if (current && next.x_cm === current.x_cm && next.y_cm === current.y_cm) {
+            bleMockTarget.current = null;
+            if (bleMockTimer.current !== null) window.clearInterval(bleMockTimer.current);
+            bleMockTimer.current = null;
+            setMockPointStatus("BLE mock point reached.");
+            return;
+          }
+          const packet = new Uint8Array(9);
+          const view = new DataView(packet.buffer);
+          packet[0] = 0x10;
+          view.setInt32(1, next.x_cm, true);
+          view.setInt32(5, next.y_cm, true);
+          bleMockBusy.current = true;
+          try {
+            await bleCharacteristic.writeValue(packet);
+            bleMockPosition.current = next;
+            bleMockLastStep.current = now;
+            setMockPointStatus("Direct BLE mock fix · smooth movement up to 5 m/s.");
+          } catch (error) {
+            bleMockTarget.current = null;
+            if (bleMockTimer.current !== null) window.clearInterval(bleMockTimer.current);
+            bleMockTimer.current = null;
+            setMockPointStatus(error instanceof Error ? error.message : "BLE position update failed.");
+          } finally {
+            bleMockBusy.current = false;
+          }
+        }, 100);
+      }
       return;
     }
 
+    if (!apiBase) {
+      setMockPointStatus("Connect to ESP32 BLE to send this mock point.");
+      return;
+    }
     pendingMockPoint.current = point;
     if (mockPointTimer.current !== null) return;
 
@@ -624,7 +720,7 @@ export default function Home() {
 
         {bleStatus !== "BLE disconnected" && <div className="ble-status" role="status" aria-live="polite">{bleStatus}</div>}
 
-        {noticeVisible && !simpleBenchView && <div className="notice"><span className="notice-icon">i</span><span><b>{connection === "live" ? "Bench telemetry connected." : "Demo environment."}</b> {connection === "live" ? esp32Source ? bleCharacteristic ? "The ESP32-C3 firmware replay uses synthetic fixtures over BLE; cue outputs still require the physical PCB button." : "The dashboard sends mock NMEA; ESP32 cue outputs still require the physical PCB button." : fpgaNmeaSource ? "Dashboard mock NMEA is parsed and assessed on the FPGA; its JA1 cue is logic-level only." : "Read-only telemetry is arriving from the BALAT bridge." : "The telemetry bridge is unavailable, so this console is showing synthetic collar data."} Animal guidance effectiveness has not been validated in field trials.</span><button onClick={() => setNoticeVisible(false)}>Dismiss</button></div>}
+        {noticeVisible && !simpleBenchView && <div className="notice"><span className="notice-icon">i</span><span><b>{connection === "live" ? "Bench telemetry connected." : "Demo environment."}</b> {connection === "live" ? esp32Source ? bleCharacteristic ? "The ESP32-C3 is connected directly from this browser over BLE; no bridge is used. Cue outputs still require the physical PCB button." : "The dashboard sends mock NMEA; ESP32 cue outputs still require the physical PCB button." : fpgaNmeaSource ? "Dashboard mock NMEA is parsed and assessed on the FPGA; its JA1 cue is logic-level only." : "Read-only telemetry is arriving from the BALAT bridge." : apiBase ? "The telemetry bridge is unavailable, so this console is showing synthetic collar data." : "No bridge is configured. Connect ESP32 BLE directly from Chrome or Edge over HTTPS; Vercel cannot access USB serial."} Animal guidance effectiveness has not been validated in field trials.</span><button onClick={() => setNoticeVisible(false)}>Dismiss</button></div>}
 
         {bleCharacteristic && <section className="mock-gps-panel" aria-label="ESP32 BLE replay controls">
           <div className="mock-gps-copy">
@@ -638,7 +734,9 @@ export default function Home() {
             <button onClick={() => void controlBleReplay("reset")} disabled={bleControlBusy}>Reset</button>
             <button onClick={() => void controlBleReplay("gps")} disabled={bleControlBusy}>GPS mode</button>
           </div>
-          {!simpleBenchView && <p className="mock-gps-note">Synthetic 201-fix replay, not live GNSS. The risk LED follows state; hold the physical button only to permit the bounded buzzer. Motor stays off.</p>}
+          {simpleBenchView
+            ? <p className="mock-gps-note">Direct browser BLE · no bridge. Click or drag the map to feed a smooth mock fix; motor stays off.</p>
+            : <p className="mock-gps-note">Synthetic 201-fix replay, not live GNSS. The risk LED follows state; hold the physical button only to permit the bounded buzzer. Motor stays off.</p>}
         </section>}
 
         {serialReplaySource && <section className="mock-gps-panel" aria-label="Mock GPS controls">
@@ -685,11 +783,11 @@ export default function Home() {
           {isExplainerView ? <PipelineExplainer /> : simpleBenchView ? <section className="bench-demo" aria-label="ESP32 LED demo">
             <div className="bench-status">
               <span className="eyebrow">RISK STATE</span>
-              <RiskBadge risk={selected.risk} label={benchRiskLabel(selected.risk, Boolean(mockGps?.manual_point))} />
+              <RiskBadge risk={selected.risk} label={benchRiskLabel(selected.risk, mockPointActive)} />
               <strong className={`bench-state ${tone[selected.risk]}`}>
-                {selected.risk === "INVALID" && mockGps?.manual_point ? `${benchRiskLabel(selected.risk, true)} · red LED · cue held` : selected.risk === "INVALID" ? "INVALID · red flashes · cue held" : selected.risk === "COOLDOWN" ? "CAUTION · yellow LED" : `${selected.risk} · ${selected.risk === "SAFE" ? "green" : selected.risk === "CAUTION" ? "yellow" : "red"} LED`}
+                {selected.risk === "INVALID" && mockPointActive ? `${benchRiskLabel(selected.risk, true)} · red LED · cue held` : selected.risk === "INVALID" ? "INVALID · red flashes · cue held" : selected.risk === "COOLDOWN" ? "CAUTION · yellow LED" : `${selected.risk} · ${selected.risk === "SAFE" ? "green" : selected.risk === "CAUTION" ? "yellow" : "red"} LED`}
               </strong>
-              <small>{selected.risk === "INVALID" && mockGps?.manual_point ? `Fix not accepted · ${telemetry?.fault ?? "check mock input"} · cue held` : selected.risk === "INVALID" ? `Fix invalid · ${telemetry?.fault ?? "check mock input"} · cue held` : `${selected.distance} from mapped road · synthetic GPS input · motor off`}</small>
+              <small>{selected.risk === "INVALID" && mockPointActive ? `Fix not accepted · ${telemetry?.fault ?? "check mock input"} · cue held` : selected.risk === "INVALID" ? `Fix invalid · ${telemetry?.fault ?? "check mock input"} · cue held` : `${selected.distance} from mapped road · synthetic GPS input · motor off`}</small>
             </div>
             <div className="bench-wiring">
               <span className="eyebrow">LED WIRING</span>
@@ -716,7 +814,7 @@ export default function Home() {
           <div className="metric-row">
             <Metric label={benchSource ? "BENCH DEVICE" : "HERD COVERAGE"} value={benchSource ? "01 / 01" : "05 / 05"} detail={benchSource ? `${benchLabel} reporting` : "collars reporting"} accent="green-accent" />
             <Metric label="ACTIVE RISK" value={`${dangerCount + cautionCount} ${benchSource ? "device" : "animals"}`} detail={`${dangerCount} danger · ${cautionCount} caution`} accent="orange-accent" />
-            <Metric label="TELEMETRY HEALTH" value={connection === "live" ? "CONNECTED" : connection === "connecting" ? "CONNECTING" : "FALLBACK"} detail={telemetry?.source === "ESP32_UART" || telemetry?.source === "BASYS3_NMEA_UART" ? `${telemetry.fix_valid ? "fix accepted" : "fix invalid"} · ${fpgaNmeaSource ? "map/cue fault on board LEDs" : `map ${telemetry.map_valid ? "valid" : "invalid"}`} · seq ${telemetry.seq}` : telemetry ? `frame ${telemetry.seq} · quality ${telemetry.quality}%` : "Bridge at localhost:8888"} accent="green-accent" />
+            <Metric label="TELEMETRY HEALTH" value={connection === "live" ? "CONNECTED" : !apiBase ? "BLE READY" : connection === "connecting" ? "CONNECTING" : "FALLBACK"} detail={telemetry?.source === "ESP32_UART" || telemetry?.source === "BASYS3_NMEA_UART" ? `${telemetry.fix_valid ? "fix accepted" : "fix invalid"} · ${fpgaNmeaSource ? "map/cue fault on board LEDs" : `map ${telemetry.map_valid ? "valid" : "invalid"}`} · seq ${telemetry.seq}` : telemetry ? `frame ${telemetry.seq} · quality ${telemetry.quality}%` : !apiBase ? "Direct browser BLE · no bridge" : "Bridge at localhost:8888"} accent="green-accent" />
             <Metric label="MAP VERSION" value={fpgaNmeaSource ? "STATIC" : benchSource ? telemetry?.map_valid ? "v1 · VALID" : "INVALID" : "v0.4.2"} detail={benchSource ? fpgaNmeaSource ? "one FPGA demo segment" : "embedded firmware map" : "synced 18 min ago"} />
           </div>
 

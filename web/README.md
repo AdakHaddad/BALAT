@@ -33,14 +33,26 @@ Basys 3 USB-UART records. The browser-facing bridge remains read-only; recording
 controls belong to the legacy bridge page and are intentionally not exposed as
 FPGA controls by this dashboard.
 
-## ESP32-C3 BLE demo and mock NMEA
+## Bridge-free ESP32-C3 BLE demo
 
-For a direct BLE demo without a serial bridge, flash the ESP32-C3 firmware,
-open the dashboard in Chrome or Edge on `localhost` or HTTPS, and connect to
-`BALAT-C3`. The BLE panel replays the 201 synthetic fixes compiled into the
-firmware and displays live status notifications. This is a firmware fixture
-replay, not live GPS or NMEA-parser input. Keep the physical cue-enable button
-released. Detailed board setup and safety checks are in
+The deployed dashboard can connect directly from the browser to the ESP32-C3;
+no USB or network bridge is involved. Deploy the dashboard over HTTPS, open it
+in desktop Chrome or Edge (or Android Chrome), choose **Connect ESP32 BLE**, and
+select `BALAT-C3`. Web Bluetooth requires a secure context and a user gesture;
+Firefox and iOS Safari do not support this flow. Vercel cannot access a USB
+device attached to your computer. Leave `NEXT_PUBLIC_BALAT_API_URL` unset for a
+bridge-free deployment; the app uses the local bridge by default only on
+localhost, unless that environment variable explicitly configures another API.
+
+The BLE panel replays the 201 synthetic fixes compiled into the firmware and
+displays live status notifications. This is a firmware fixture replay, not live
+GPS or NMEA-parser input. The deployed dashboard bundles the small road-map
+overlay in `public/road_map.json`; its source is OpenStreetMap via Overpass API
+and it is licensed under ODbL. Map clicks and drags send synthetic coordinate
+fixes directly over BLE, smoothed to at most 5 m/s for the demo. This cap only
+affects browser-generated mock movement; firmware fix, stale, jump, and risk
+checks remain enabled. Keep the physical cue-enable button released. Detailed
+board setup and safety checks are in
 [`../docs/ESP32_ASSEMBLY_DEMO.md`](../docs/ESP32_ASSEMBLY_DEMO.md).
 
 In ESP32 mode the map is centered on the firmware map origin, overlays its
@@ -50,7 +62,7 @@ the selected point is synthetic and does not come from a GNSS receiver.
 
 ### USB serial NMEA input
 
-The same bridge can read ESP32 key/value decision logs. Connect and flash the
+The local bridge can read ESP32 key/value decision logs. Connect and flash the
 ESP32-C3 using [`../docs/ESP32_ASSEMBLY_DEMO.md`](../docs/ESP32_ASSEMBLY_DEMO.md),
 then start the bridge without `--mock-gps` to control simulated fixes from the
 dashboard:
@@ -148,7 +160,8 @@ and leave the build settings at their detected values:
 
 Set `NEXT_PUBLIC_BALAT_API_URL` in the deployment environment variables when
 the dashboard should poll a reachable telemetry bridge. If it is not set, the
-dashboard uses its built-in synthetic snapshot.
+dashboard does not poll a bridge; use the browser's direct ESP32 BLE connection
+instead. Vercel cannot forward browser access to local USB serial.
 
 The authenticated telemetry history endpoint requires these server-only
 variables:
