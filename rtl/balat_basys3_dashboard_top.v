@@ -3,6 +3,15 @@
 // The existing HerdSync bridge returns FPGA position/risk frames on UART TX.
 // SW2 enables the logic-level cue observation output; SW1 forces invalid;
 // SW3 forces map invalid. BTNC is active-high reset. JA1 is not an actuator pin.
+//
+// Map: Sumbawa Besar road network, West Nusa Tenggara, Indonesia.
+//   Origin: lat -8.490 deg, lon 117.420 deg (ORIGIN_LAT_DEG7=-84900000, ORIGIN_LON_DEG7=1174200000)
+//   99 road segments from road_seg_rom.v. nearest_segment scans all segments
+//   each time a valid GNSS fix arrives and feeds the closest one to risk_fsm.
+//   Map data: © OpenStreetMap contributors (ODbL) — see data/road_manifest.json
+//
+// Pipeline: UART RX → nmea_parser → coord_convert → nearest_segment (99 segs)
+//           → risk_fsm → cue_scheduler → herdsync_uart_bridge
 module balat_basys3_dashboard_top #(
     parameter integer CLK_PER_MS = 100_000,
     parameter integer DEMO_TICK_INTERVAL_MS = 100,
@@ -11,7 +20,9 @@ module balat_basys3_dashboard_top #(
     parameter integer COOLDOWN_TICKS = 30,
     parameter integer HEARTBEAT_DIV = 50_000_000,
     parameter integer UART_CLK_HZ = 100_000_000,
-    parameter integer UART_BAUD = 115200
+    parameter integer UART_BAUD = 115200,
+    // Sumbawa Besar origin (see coord_convert.v)
+    parameter integer SEG_COUNT = 99
 ) (
     input wire clk,
     input wire btnC,
@@ -62,12 +73,39 @@ module balat_basys3_dashboard_top #(
     end
     wire sample_tick = sample_pipe[9];
 
+    // nearest_segment scans all SEG_COUNT road segments from road_seg_rom on
+    // every valid position update and reports the closest one.
+    // Start a new scan on each pos_ready pulse; latency ~(SEG_COUNT * 14) cycles.
+    wire [15:0] rom_addr;
+    wire [31:0] rom_data;
     wire [63:0] dist2;
-    road_geom u_geom (
-        .clk(clk), .rst(rst), .px(px), .py(py),
-        .ax(-32'sd2000), .ay(32'sd0), .bx(32'sd2000), .by(32'sd0),
-        .ux_q14(16'sd16384), .uy_q14(16'sd0), .dist2(dist2), .inside_span()
+    wire        ns_inside_span;
+    wire        ns_done;
+    wire        ns_busy;
+
+    road_seg_rom #(.SEG_COUNT(SEG_COUNT)) u_seg_rom (
+        .addr (rom_addr),
+        .data (rom_data)
     );
+
+    nearest_segment #(.SEG_COUNT(SEG_COUNT)) u_nearest (
+        .clk            (clk),
+        .rst            (rst),
+        .start          (pos_ready),
+        .px             (px),
+        .py             (py),
+        .rom_addr       (rom_addr),
+        .rom_data       (rom_data),
+        .min_dist2      (dist2),
+        .nearest_seg_id (),
+        .inside_span    (ns_inside_span),
+        .done           (ns_done),
+        .busy           (ns_busy)
+    );
+
+    // sample_tick fires when nearest_segment completes; this guarantees dist2
+    // is stable and valid before risk_fsm samples it.
+    wire sample_tick = ns_done;
 
     reg [63:0] prev_dist2;
     wire approaching = dist2 < prev_dist2;

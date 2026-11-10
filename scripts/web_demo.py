@@ -45,9 +45,9 @@ from poc.herdsync_dtn.uart_frame import (  # noqa: E402
 
 RISK_NAMES = {0: "INVALID", 1: "SAFE", 2: "CAUTION", 3: "DANGER", 4: "COOLDOWN"}
 RISK_CODES = {name: code for code, name in RISK_NAMES.items()}
-ESP32_ORIGIN_LAT_DEG7 = -338250000
-ESP32_ORIGIN_LON_DEG7 = 186500000
-ESP32_COS_LAT_Q14 = 13611
+ESP32_ORIGIN_LAT_DEG7 = -84_900_000
+ESP32_ORIGIN_LON_DEG7 = 1_174_200_000
+ESP32_COS_LAT_Q14 = 16_204
 ESP32_MAX_COORD_CM = 1_000_000
 MOCK_MAP_SPEED_CM_S = 500
 
@@ -303,6 +303,7 @@ MAP_DATA = {
 
 def load_reference_map(segment_path: Path, manifest_path: Path) -> dict:
     """Load a bounded local map layer for dashboard context, never FPGA control."""
+    global ESP32_ORIGIN_LAT_DEG7, ESP32_ORIGIN_LON_DEG7, ESP32_COS_LAT_Q14
     reference = {"available": False, "reason": "Reference map files not found."}
     if not segment_path.is_file() or not manifest_path.is_file():
         return {"active": ACTIVE_DEMO_MAP, "reference": reference}
@@ -322,6 +323,29 @@ def load_reference_map(segment_path: Path, manifest_path: Path) -> dict:
             ]
         if not segments:
             raise ValueError("segment CSV is empty")
+
+        origin_lat = manifest.get("origin_lat")
+        origin_lon = manifest.get("origin_lon")
+        origin_lat_deg7 = manifest.get("origin_lat_deg7")
+        origin_lon_deg7 = manifest.get("origin_lon_deg7")
+        cos_lat_q14 = manifest.get("cos_lat_q14")
+        if origin_lat_deg7 is None and origin_lat is not None:
+            origin_lat_deg7 = round(float(origin_lat) * 10_000_000)
+        if origin_lon_deg7 is None and origin_lon is not None:
+            origin_lon_deg7 = round(float(origin_lon) * 10_000_000)
+        if cos_lat_q14 is None and origin_lat is not None:
+            cos_lat_q14 = round(math.cos(math.radians(float(origin_lat))) * (1 << 14))
+        if origin_lat is None and origin_lat_deg7 is not None:
+            origin_lat = float(origin_lat_deg7) / 10_000_000
+        if origin_lon is None and origin_lon_deg7 is not None:
+            origin_lon = float(origin_lon_deg7) / 10_000_000
+        if origin_lat_deg7 is not None:
+            ESP32_ORIGIN_LAT_DEG7 = int(origin_lat_deg7)
+        if origin_lon_deg7 is not None:
+            ESP32_ORIGIN_LON_DEG7 = int(origin_lon_deg7)
+        if cos_lat_q14 is not None:
+            ESP32_COS_LAT_Q14 = int(cos_lat_q14)
+
         reference = {
             "available": True,
             "segment_count": len(segments),
@@ -330,8 +354,8 @@ def load_reference_map(segment_path: Path, manifest_path: Path) -> dict:
             "extraction_utc": manifest.get("extraction_utc", "unknown"),
             "crs": manifest.get("crs", "unknown"),
             "coordinate_unit": manifest.get("coordinate_unit", "unknown"),
-            "origin_lat": manifest.get("origin_lat"),
-            "origin_lon": manifest.get("origin_lon"),
+            "origin_lat": origin_lat,
+            "origin_lon": origin_lon,
             "origin_lat_deg7": ESP32_ORIGIN_LAT_DEG7,
             "origin_lon_deg7": ESP32_ORIGIN_LON_DEG7,
             "cos_lat_q14": ESP32_COS_LAT_Q14,
@@ -808,11 +832,22 @@ def run_esp32_telemetry(port: str, baud: int, mock_gps: bool = False, interval: 
                     if not device_mock_mode:
                         serial_port.write(b"MOCK START\r\n")
                         device_mock_mode = True
+                    now = time.monotonic()
                     if manual_feed_position is None:
-                        manual_feed_position = point_pending
-                        serial_port.write(synthetic_fix_command(*manual_feed_position))
-                        last_manual_fix = time.monotonic()
-                    next_manual_fix = min(next_manual_fix, time.monotonic())
+                        with STATE_LOCK:
+                            has_fix = bool(CURRENT_STATE.get("fix_valid"))
+                            last_x_cm = int(CURRENT_STATE.get("x_cm", 0))
+                            last_y_cm = int(CURRENT_STATE.get("y_cm", 0))
+                        manual_feed_position = (last_x_cm, last_y_cm) if has_fix else point_pending
+                        last_manual_fix = now
+                    manual_feed_position = step_towards_point(
+                        manual_feed_position,
+                        point_pending,
+                        MOCK_MAP_SPEED_CM_S * max(0.0, now - last_manual_fix),
+                    )
+                    serial_port.write(synthetic_fix_command(*manual_feed_position))
+                    last_manual_fix = now
+                    next_manual_fix = now + fix_interval
                     set_transport_status(
                         "ESP32_UART",
                         f"Interactive synthetic fix moving toward {point_pending[0]},{point_pending[1]} cm at up to {MOCK_MAP_SPEED_CM_S / 100:.0f} m/s; GPS receiver off.",

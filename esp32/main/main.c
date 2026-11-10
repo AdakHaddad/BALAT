@@ -149,11 +149,36 @@ static void outputs_apply(void)
     bool active = s->cue_active && s->cue_enable && !s->manual_disable &&
                   s->risk_state != BALAT_RISK_INVALID;
 
+    /* Log once per transition why the cue is blocked, to help diagnose
+     * "DANGER on but nothing fires" on the bench.
+     * Gates in priority order:
+     *   1. cue_enable: GPIO6 button must be held (active-low).
+     *   2. cue_active: engine cue state machine — may be in cooldown (30 s).
+     *   3. manual_disable: set programmatically.
+     *   4. INVALID risk state: stale GNSS or invalid map.
+     */
+    static bool prev_active;
+    if (active != prev_active) {
+        if (!active) {
+            ESP_LOGW(TAG,
+                "cue BLOCKED: btn=%d cue_en=%d cooldown=%d manual=%d risk=%d stale=%d map=%d",
+                (int)s->cue_enable, (int)s->cue_active, (int)s->cooldown,
+                (int)s->manual_disable, (int)s->risk_state,
+                (int)s->stale, (int)s->map_valid);
+        } else {
+            ESP_LOGI(TAG, "cue ACTIVE: risk=%d", (int)s->risk_state);
+        }
+        prev_active = active;
+    }
+
     bool buzzer_active = active && s->risk_state == BALAT_RISK_DANGER;
+    /* Vibration fires on CAUTION and DANGER in all modes (including mock/demo).
+     * The mock_mode guard was removed: synthetic-fix bench runs need the motor
+     * to prove the hardware path works before live GPS testing.
+     */
     bool vibration_active =
         active && (s->risk_state == BALAT_RISK_CAUTION ||
-                   s->risk_state == BALAT_RISK_DANGER) &&
-        !mock_mode;
+                   s->risk_state == BALAT_RISK_DANGER);
 
     /* Buzzer: LEDC PWM at 4 kHz produces an audible tone from the piezo.
      * Setting duty to 0 and stopping the timer silences it cleanly.
@@ -221,7 +246,7 @@ static void print_help(void)
     puts("PCB map: BUZ=GPIO3 MOT=GPIO4 GPS_EN=GPIO5 BTN=GPIO6 LED=GPIO10 GPS_RX=GPIO20");
     puts("Status LEDs: GREEN=GPIO10 RED=GPIO7 YELLOW=GPIO21; red/yellow are bench-only.");
     puts("USB mock data cannot arm cues; hold the PCB button to enable bounded outputs.");
-        puts("Mock mode: status LED follows risk; buzzer is button-gated; vibration remains off.");
+        puts("Mock mode: status LED follows risk; buzzer and vibration are button-gated (hold GPIO6).");
 }
 
 static void process_command(char *line)

@@ -8,10 +8,16 @@
 // Inputs are captured on fix_ready, then processed over three registered
 // stages to keep the multiplier path within the 100 MHz Basys 3 clock.
 // pos_ready pulses with px/py three clocks after the accepted fix_ready edge.
+//
+// Origin: Sumbawa Besar town centre, West Nusa Tenggara, Indonesia
+//   lat = -8.490 deg  → ORIGIN_LAT_DEG7 = -84_900_000
+//   lon = 117.420 deg → ORIGIN_LON_DEG7 = 1_174_200_000
+//   cos(-8.490 deg) × 16384 = 16204
+// Map data: Sumbawa Besar road network — see data/road_manifest.json
 module coord_convert #(
-    parameter signed [31:0] ORIGIN_LAT_DEG7 = -32'sd338250000,
-    parameter signed [31:0] ORIGIN_LON_DEG7 =  32'sd186500000,
-    parameter signed [15:0] COS_LAT_Q14 = 16'sd13611
+    parameter signed [31:0] ORIGIN_LAT_DEG7 = -32'sd84900000,
+    parameter signed [31:0] ORIGIN_LON_DEG7 =  32'sd1174200000,
+    parameter signed [15:0] COS_LAT_Q14     = 16'sd16204
 ) (
     input  wire               clk,
     input  wire               rst,

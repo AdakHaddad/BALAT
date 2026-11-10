@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { FirmwareRoadMap, MockMapPoint } from "./InteractiveRoadMap";
+import { nearestRoadMatch, parseRoadMapPayload, type FirmwareRoadMap, type MockMapPoint } from "./roadGeometry";
 
 type Risk = "INVALID" | "SAFE" | "CAUTION" | "DANGER" | "COOLDOWN";
 type ConnectionState = "connecting" | "live" | "fallback";
@@ -259,23 +259,12 @@ function Metric({ label, value, detail, accent = "" }: { label: string; value: s
   );
 }
 
-function nearestRoadDistanceM(point: { x_cm: number; y_cm: number } | null, roadMap: FirmwareRoadMap | null): number | null {
-  if (!point || !roadMap?.available || roadMap.segments.length === 0) return null;
-  return Math.min(...roadMap.segments.map((segment) => {
-    const dx = segment.bx - segment.ax;
-    const dy = segment.by - segment.ay;
-    const lengthSquared = dx * dx + dy * dy;
-    const projection = lengthSquared === 0
-      ? 0
-      : Math.max(0, Math.min(1, ((point.x_cm - segment.ax) * dx + (point.y_cm - segment.ay) * dy) / lengthSquared));
-    return Math.hypot(point.x_cm - (segment.ax + projection * dx), point.y_cm - (segment.ay + projection * dy)) / 100;
-  }));
-}
-
 function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchSource, roadMap, mockPoint, livePoint, livePointValid, pointStatus, onMoveMock }: { animals: Animal[]; activeId: string; onSelect: (id: string) => void; esp32Source: boolean; fpgaSource: boolean; benchSource: boolean; roadMap: FirmwareRoadMap | null; mockPoint: MockMapPoint | null; livePoint: { x_cm: number; y_cm: number } | null; livePointValid: boolean; pointStatus: string; onMoveMock: (point: MockMapPoint) => void }) {
   const displayedAnimals = benchSource ? animals.slice(0, 1) : animals;
   const shownPoint = mockPoint ?? livePoint;
-  const roadDistance = nearestRoadDistanceM(shownPoint, roadMap);
+  const roadMatch = nearestRoadMatch(shownPoint, roadMap?.segments);
+  const roadDistance = roadMatch ? roadMatch.distanceCm / 100 : null;
+  const activeRisk = animals[0]?.risk ?? "INVALID";
   const livePosition = livePoint ? {
     left: `${Math.max(2, Math.min(98, 50 + livePoint.x_cm / 120_000 * 100))}%`,
     top: `${Math.max(2, Math.min(98, 50 - livePoint.y_cm / 120_000 * 100))}%`,
@@ -285,9 +274,9 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchS
       <div className="map-header">
         <div>
           <span className="eyebrow">MAP</span>
-          <h2>{esp32Source ? "Cape Town · ESP32 road map" : fpgaSource ? "FPGA demo map" : "Corridor 04 · Kupang"}</h2>
+          <h2>{esp32Source ? "Sumbawa Besar · ESP32-C3 road map" : fpgaSource ? "FPGA demo map" : "Sumbawa Besar · demo replay"}</h2>
         </div>
-        <span className="map-chip">{esp32Source && roadMap?.available ? "ESP32 OSM ROADS" : "OPENSTREETMAP"}</span>
+        <span className="map-chip">{esp32Source && roadMap?.available ? "SUMBAWA BESAR · OSM" : "OPENSTREETMAP"}</span>
       </div>
       {esp32Source ? <div className="map firmware-map">
         <InteractiveRoadMap
@@ -295,7 +284,8 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchS
           point={mockPoint}
           livePoint={livePoint}
           livePointValid={livePointValid}
-          risk={selectedRisk(animals[0]?.risk ?? "INVALID")}
+          risk={selectedRisk(activeRisk)}
+          riskLabel={activeRisk}
           onSelect={onMoveMock}
         />
       </div> : <div className={fpgaSource ? "map local-risk-map" : "map"}>
@@ -304,8 +294,8 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchS
           <text x="52" y="8">FPGA DEMO ROAD</text>
         </svg>}
         {!fpgaSource && <iframe
-          title="OpenStreetMap view of Corridor 04 near Kupang"
-          src="https://www.openstreetmap.org/export/embed.html?bbox=123.52%2C-10.22%2C123.66%2C-10.12&layer=mapnik&marker=-10.17,123.59"
+          title="OpenStreetMap view of Sumbawa Besar"
+          src="https://www.openstreetmap.org/export/embed.html?bbox=117.38%2C-8.52%2C117.47%2C-8.46&layer=mapnik&marker=-8.49,117.42"
           loading="lazy"
         />}
         {/* Overlay cattle positions on map */}
@@ -337,10 +327,10 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchS
         </div>}
       </div>}
       <div className="map-footer">
-        <span>{esp32Source ? roadMap?.available ? `${roadMap.segment_count ?? roadMap.segments.length} ESP32 OSM segments · click/drag mock point${shownPoint && roadDistance !== null ? ` · ${roadDistance.toFixed(1)} m to nearest road` : ""}` : "Bundled ESP32 road map unavailable" : fpgaSource ? "Single FPGA demo segment" : "Road geometry: local manifest v0.4.2"}</span>
+        <span>{esp32Source ? roadMap?.available ? `${roadMap.segment_count ?? roadMap.segments.length} Sumbawa OSM segments${roadMatch ? ` · nearest seg ${roadMatch.segment.id} · ${roadDistance?.toFixed(1)} m to road` : " · click/drag mock point"}` : "Bundled Sumbawa road map unavailable" : fpgaSource ? "Single FPGA demo segment" : "Road geometry: local manifest v0.4.2"}</span>
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
       </div>
-      {esp32Source && <div className="map-point-status" role="status" aria-live="polite">{pointStatus || "Click to place the mock location, then drag toward a mapped road for approach detection."}</div>}
+      {esp32Source && <div className="map-point-status" role="status" aria-live="polite">{pointStatus || "Click to place the mock location, then drag toward a Sumbawa road for approach detection."}</div>}
     </div>
   );
 }
@@ -393,18 +383,25 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(apiBase ? `${apiBase}/api/map` : "/road_map.json", { cache: "no-store" })
-      .then((response) => {
-        if (!response.ok) throw new Error("Road map request failed");
-        return response.json();
-      })
-      .then((payload: { reference?: FirmwareRoadMap } | FirmwareRoadMap) => {
-        const reference = "available" in payload ? payload : payload.reference;
-        if (!cancelled) setRoadMap(reference?.available ? reference : null);
-      })
-      .catch(() => {
-        if (!cancelled) setRoadMap(null);
-      });
+    const loadRoadMap = async () => {
+      const sources = apiBase ? [`${apiBase}/api/map`, "/road_map.json"] : ["/road_map.json"];
+      for (const source of sources) {
+        try {
+          const response = await fetch(source, { cache: "no-store" });
+          if (!response.ok) continue;
+          const reference = parseRoadMapPayload(await response.json());
+          if (cancelled) return;
+          if (reference) {
+            setRoadMap(reference);
+            return;
+          }
+        } catch {
+          // Try the bundled Sumbawa map when the bridge is unavailable.
+        }
+      }
+      if (!cancelled) setRoadMap(null);
+    };
+    void loadRoadMap();
     return () => { cancelled = true; };
   }, [apiBase]);
 
@@ -698,7 +695,7 @@ export default function Home() {
     <main className={pitchMode ? "app-shell pitch-mode" : "app-shell"}>
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark">B</div><div><strong>BALAT</strong><small>FIELD CONSOLE</small></div></div>
-        <div className="site-switcher"><span className="site-dot" /><div><b>{benchSource ? benchLabel : "NTT / Kupang"}</b><small>{benchSource ? "Local coordinates · dashboard mock NMEA" : "Corridor 04 · Demo replay"}</small></div><span className="chevron">⌄</span></div>
+        <div className="site-switcher"><span className="site-dot" /><div><b>{benchSource ? benchLabel : "NTB / Sumbawa Besar"}</b><small>{benchSource ? "Sumbawa Besar · local coordinates" : "Sumbawa Besar · Demo replay"}</small></div><span className="chevron">⌄</span></div>
         <nav>
           {navItems.map((item) => (
             <button key={item} className={view === item ? "nav-item active" : "nav-item"} onClick={() => setView(item)}>
@@ -714,7 +711,7 @@ export default function Home() {
 
       <section className="workspace">
         <header className="topbar">
-          <div><span className="eyebrow">{pitchMode ? `BALAT / ${isExplainerView ? "SYSTEM EXPLAINER" : "FIELD CONSOLE"}` : `FIELD OPERATIONS / ${view.toUpperCase()}`}</span><h1>{pitchMode ? isExplainerView ? "How the local risk engine works." : benchSource ? `${benchLabel} · local risk state` : "Corridor 04 · Kupang" : view === "Overview" ? "Good evening, operator." : view}</h1></div>
+          <div><span className="eyebrow">{pitchMode ? `BALAT / ${isExplainerView ? "SYSTEM EXPLAINER" : "FIELD CONSOLE"}` : `FIELD OPERATIONS / ${view.toUpperCase()}`}</span><h1>{pitchMode ? isExplainerView ? "How the local risk engine works." : benchSource ? `${benchLabel} · local risk state` : "Sumbawa Besar · demo replay" : view === "Overview" ? "Good evening, operator." : view}</h1></div>
           <div className="top-actions"><span className="replay-label"><span className="status-dot safe-dot" /> {sourceLabel}</span><span className="clock">{now} WIB</span><button className="pitch-toggle" disabled={bleConnecting} onClick={() => { if (bleCharacteristic) { bleCharacteristic.service?.device?.gatt?.disconnect(); setBleCharacteristic(null); setBleReplayRunning(false); setBleStatus("BLE disconnected."); setConnection("connecting"); } else { void connectBle(); } }}>{bleCharacteristic ? "Disconnect ESP32 BLE" : bleConnecting ? "Connecting…" : "Connect ESP32 BLE"}</button>{pitchMode && <button className="pitch-toggle" onClick={() => setView(isExplainerView ? "Overview" : "How BALAT works")}>{isExplainerView ? "Dashboard" : "How it works"}</button>}<button className="pitch-toggle" onClick={togglePitchMode}>{pitchMode ? "Operator view" : "Pitch snapshot"}</button><button className="icon-button">⚙</button></div>
         </header>
 

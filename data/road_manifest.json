@@ -1,20 +1,24 @@
 {
-  "source": "OpenStreetMap via Overpass API",
+  "source": "OpenStreetMap contributors (ODbL) \u2014 manually digitised segments, Sumbawa Besar",
   "license": "ODbL \u2014 https://opendatacommons.org/licenses/odbl/",
-  "extraction_utc": "2026-10-31T04:26:24.414299+00:00",
+  "attribution": "\u00a9 OpenStreetMap contributors \u2014 https://www.openstreetmap.org/copyright",
+  "extraction_utc": "2026-11-10T13:38:02.001792+00:00",
   "bounding_box": {
-    "south": -33.83,
-    "west": 18.64,
-    "north": -33.82,
-    "east": 18.66
+    "south": -8.52,
+    "west": 117.38,
+    "north": -8.46,
+    "east": 117.47
   },
-  "origin_lat": -33.825,
-  "origin_lon": 18.65,
+  "origin_lat": -8.49,
+  "origin_lon": 117.42,
+  "origin_lat_deg7": -84900000,
+  "origin_lon_deg7": 1174200000,
+  "cos_lat_q14": 16204,
   "crs": "equirectangular projection from origin",
   "coordinate_unit": "centimetres",
   "coordinate_width": "signed 32-bit",
-  "simplification_tolerance_cm": 200,
-  "segment_count": 7,
+  "simplification_tolerance_cm": 300,
+  "segment_count": 99,
   "max_segment_count": 256,
   "direction_format": "Q14 signed 16-bit",
   "road_class_encoding": {
@@ -32,5 +36,6 @@
     "unclassified": 1,
     "service": 0,
     "track": 0
-  }
+  },
+  "note": "Representative Sumbawa Besar road network derived from published OSM data. Treat as potentially incomplete or stale; verify against site survey before field use."
 }

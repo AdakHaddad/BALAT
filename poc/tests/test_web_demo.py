@@ -132,8 +132,14 @@ class InteractiveMockMapTest(unittest.TestCase):
             REPO / "data" / "road_manifest.json",
         )
         segments = loaded["reference"]["segments"]
-        self.assertAlmostEqual(web_demo.nearest_road_distance_cm(0, -30_000, segments), 0)
-        self.assertAlmostEqual(web_demo.nearest_road_distance_cm(1_000, -30_000, segments), 1_000)
+        segment = segments[0]
+        mid_x = (segment["ax"] + segment["bx"]) // 2
+        mid_y = (segment["ay"] + segment["by"]) // 2
+        self.assertAlmostEqual(web_demo.nearest_road_distance_cm(mid_x, mid_y, segments), 0)
+        self.assertGreater(
+            web_demo.nearest_road_distance_cm(mid_x + 500_000, mid_y + 500_000, segments),
+            0,
+        )
 
     def test_point_endpoint_queues_projected_mock_location(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), web_demo.DemoHandler)

@@ -55,10 +55,15 @@ checks remain enabled. Keep the physical cue-enable button released. Detailed
 board setup and safety checks are in
 [`../docs/ESP32_ASSEMBLY_DEMO.md`](../docs/ESP32_ASSEMBLY_DEMO.md).
 
-In ESP32 mode the map is centered on the firmware map origin, overlays its
-OSM-derived road segments, and lets you click or drag a synthetic point. Drag
-toward a road to send consecutive mock fixes and exercise approach detection;
-the selected point is synthetic and does not come from a GNSS receiver.
+In ESP32 mode the map is centered on the firmware map origin (Sumbawa Besar,
+lat -8.49, lon 117.42), overlays its OSM-derived road segments, and lets you
+click or drag a synthetic point. The map highlights the nearest segment,
+draws the approach line to the road, and shows the live road distance and
+risk state. Dashed rings mark the 5 m caution buffer and the 2 m danger buffer
+around the nearest road projection, so the approach is visible before the
+firmware cue fires. Drag toward a road to send consecutive mock fixes and
+exercise approach detection; the selected point is synthetic and does not come
+from a GNSS receiver.
 
 ### USB serial NMEA input
 
@@ -92,7 +97,7 @@ for an actually connected receiver. Close IDF Monitor before the bridge takes
 the USB port. Hold the PCB button only for a deliberate bounded-output bench
 demo; leave it released during setup and mock-input checks.
 
-ESP32 local coordinates use the South Africa map origin in the firmware map
+ESP32 local coordinates use the Sumbawa Besar map origin in the firmware map
 manifest. The dashboard centres its bench map there. A manually selected
 synthetic point remains visible while replaying. The last reported position
 also remains visible after a fix becomes invalid, labeled as invalid rather
@@ -102,8 +107,9 @@ FIX`, while retaining the red LED and cue-held indication; the full operator
 view keeps the explicit INVALID classification. The pitch-mode bench view
 shows the three status LED pins and resistors:
 GPIO7/red, GPIO21/yellow, GPIO10/green, each through its own 220 Ω resistor,
-with all LED cathodes connected to GND. The geographic point overlay is
-approximate, and the page does not draw the firmware's exact road-segment lines.
+with all LED cathodes connected to GND. The map draws the firmware's bundled
+road segments and highlights the nearest one as the mock point moves; treat
+the displayed geometry as a bench reference, not a surveyed road boundary.
 Other collars remain sample data only when ESP32 telemetry is absent.
 Firmware pin defaults match the PCB signal nets, but its power path remains on
 HOLD. Review [`../docs/PCB_LAYOUT_REVIEW_2026-11-08.md`](../docs/PCB_LAYOUT_REVIEW_2026-11-08.md)
