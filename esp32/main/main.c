@@ -142,17 +142,18 @@ static void outputs_apply(void)
                   s->risk_state != BALAT_RISK_INVALID;
 
     gpio_set_level(CONFIG_BALAT_BUZZER_GPIO, active ? 1 : 0);
-    gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, active ? 1 : 0);
+    gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, active && !mock_mode ? 1 : 0);
 
-    /* The PCB has one active-high indicator LED. Invalid blinks at 2 Hz;
-     * caution/danger/cooldown is steady on; safe is off. */
-    bool led_on = s->risk_state == BALAT_RISK_CAUTION ||
-                  s->risk_state == BALAT_RISK_DANGER ||
-                  s->risk_state == BALAT_RISK_COOLDOWN;
+    bool red_on = s->risk_state == BALAT_RISK_DANGER;
+    bool yellow_on = s->risk_state == BALAT_RISK_CAUTION ||
+                     s->risk_state == BALAT_RISK_COOLDOWN;
+    bool green_on = s->risk_state == BALAT_RISK_SAFE;
     if (s->risk_state == BALAT_RISK_INVALID) {
-        led_on = ((now_ms() / 250u) & 1u) != 0u;
+        red_on = ((now_ms() / 250u) & 1u) != 0u;
     }
-    gpio_set_level(CONFIG_BALAT_STATUS_LED_GPIO, led_on ? 1 : 0);
+    gpio_set_level(CONFIG_BALAT_LED_RED_GPIO, red_on ? 1 : 0);
+    gpio_set_level(CONFIG_BALAT_LED_YELLOW_GPIO, yellow_on ? 1 : 0);
+    gpio_set_level(CONFIG_BALAT_STATUS_LED_GPIO, green_on ? 1 : 0);
 }
 
 static void log_decision(const char *event)
@@ -193,7 +194,9 @@ static void print_help(void)
     puts("NMEA <sentence> is accepted only in mock mode.");
     puts("MOCK START|PAUSE|RESET|STOP; FAULT NONE|STALE|MAP|CORRUPT CLEAR RESET");
     puts("PCB map: BUZ=GPIO3 MOT=GPIO4 GPS_EN=GPIO5 BTN=GPIO6 LED=GPIO10 GPS_RX=GPIO20");
+    puts("Status LEDs: GREEN=GPIO10 RED=GPIO7 YELLOW=GPIO21; red/yellow are bench-only.");
     puts("USB mock data cannot arm cues; hold the PCB button to enable bounded outputs.");
+        puts("Mock mode: status LED follows risk; buzzer is button-gated; motor remains off.");
 }
 
 static void process_command(char *line)
@@ -360,7 +363,9 @@ void app_main(void)
     uint64_t output_mask = (1ULL << CONFIG_BALAT_BUZZER_GPIO) |
                            (1ULL << CONFIG_BALAT_MOTOR_GPIO) |
                            (1ULL << CONFIG_BALAT_GPS_ENABLE_GPIO) |
-                           (1ULL << CONFIG_BALAT_STATUS_LED_GPIO);
+                           (1ULL << CONFIG_BALAT_STATUS_LED_GPIO) |
+                           (1ULL << CONFIG_BALAT_LED_RED_GPIO) |
+                           (1ULL << CONFIG_BALAT_LED_YELLOW_GPIO);
     gpio_config_t out;
     out = (gpio_config_t){.pin_bit_mask = output_mask,
                          .mode = GPIO_MODE_OUTPUT, .pull_up_en = GPIO_PULLUP_DISABLE,
@@ -375,7 +380,9 @@ void app_main(void)
 
     gpio_set_level(CONFIG_BALAT_BUZZER_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, 0);
-    gpio_set_level(CONFIG_BALAT_STATUS_LED_GPIO, 1);
+    gpio_set_level(CONFIG_BALAT_STATUS_LED_GPIO, 0);
+    gpio_set_level(CONFIG_BALAT_LED_RED_GPIO, 0);
+    gpio_set_level(CONFIG_BALAT_LED_YELLOW_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_GPS_ENABLE_GPIO, 1);
     gpio_config(&out);
     gpio_config(&in);

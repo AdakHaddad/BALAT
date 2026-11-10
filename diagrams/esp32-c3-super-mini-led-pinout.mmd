@@ -1,0 +1,42 @@
+graph LR
+  subgraph LEFT["LEFT EDGE<br/>antenna to USB"]
+    direction TB
+    L21["GPIO21 / YELLOW LED"]
+    L20["GPIO20 / GNSS RX"]
+    L10["GPIO10 / GREEN LED"]
+    L9["GPIO9"]
+    L8["GPIO8"]
+    L7["GPIO7 / RED LED"]
+    L6["GPIO6 / BUTTON"]
+    L5["GPIO5 / GPS power"]
+  end
+
+  subgraph BOARD["ESP32-C3 Super Mini<br/>component side"]
+    direction TB
+    ANT["ANTENNA end"]
+    CHIP["ESP32-C3"]
+    USB["USB-C end"]
+  end
+
+  subgraph RIGHT["RIGHT EDGE<br/>antenna to USB"]
+    direction TB
+    R0["GPIO0"]
+    R1["GPIO1"]
+    R2["GPIO2"]
+    R3["GPIO3 / buzzer"]
+    R4["GPIO4 / motor driver"]
+    V33["3V3"]
+    GND["GND"]
+    V5["5V"]
+  end
+
+  ANT ~~~ CHIP ~~~ USB
+  L21 ~~~ L20 ~~~ L10 ~~~ L9 ~~~ L8 ~~~ L7 ~~~ L6 ~~~ L5
+  R0 ~~~ R1 ~~~ R2 ~~~ R3 ~~~ R4 ~~~ V33 ~~~ GND ~~~ V5
+  L10 ~~~ CHIP ~~~ R4
+  classDef red fill:#fee2e2,stroke:#b91c1c,color:#7f1d1d
+  classDef yellow fill:#fef3c7,stroke:#a16207,color:#713f12
+  classDef green fill:#dcfce7,stroke:#15803d,color:#14532d
+  class L7 red
+  class L21 yellow
+  class L10 green

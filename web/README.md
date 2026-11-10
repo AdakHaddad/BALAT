@@ -43,6 +43,11 @@ replay, not live GPS or NMEA-parser input. Keep the physical cue-enable button
 released. Detailed board setup and safety checks are in
 [`../docs/ESP32_ASSEMBLY_DEMO.md`](../docs/ESP32_ASSEMBLY_DEMO.md).
 
+In ESP32 mode the map is centered on the firmware map origin, overlays its
+OSM-derived road segments, and lets you click or drag a synthetic point. Drag
+toward a road to send consecutive mock fixes and exercise approach detection;
+the selected point is synthetic and does not come from a GNSS receiver.
+
 ### USB serial NMEA input
 
 The same bridge can read ESP32 key/value decision logs. Connect and flash the
@@ -54,28 +59,40 @@ dashboard:
 python3 scripts/web_demo.py --esp32-serial /dev/ttyACM0 --interval 0.1
 ```
 
-The dashboard's mock controls send checksummed GGA/RMC commands over USB serial
-and read firmware decision logs from that port. Firmware uses its regular NMEA
-parser and fix gate; this is synthetic input, not live GNSS. In a second
-terminal:
+The replay controls send checksummed GGA/RMC commands over USB serial, and
+firmware uses its regular NMEA parser and fix gate. A manually selected map
+point instead sends interpolated `FIX <x_cm> <y_cm>` synthetic fixes at the
+chosen interval, moving toward the selected point at up to 5 m/s. This cap is
+for smooth mock movement only; firmware fix, stale, and risk checks remain
+enabled. Both are simulated inputs, not live GNSS; map-point mode turns GPS
+module power off and does not require the receiver. In a second terminal:
 
 ```bash
 cd web
 NEXT_PUBLIC_BALAT_API_URL=http://localhost:8888 bun run dev
 ```
 
-Open `http://localhost:3000/?pitch=1`. Use Start, Pause, Reset, and GPS mode in
-the ESP32 simulation panel. Close IDF Monitor before the bridge takes the USB
-port. For real GNSS, choose GPS mode and connect receiver TX to GPIO20. Hold
-the PCB button only for a deliberate bounded-output bench demo; leave it
-released during setup and mock-input checks.
+Open `http://localhost:3000/?pitch=1`, select or drag a map point, and the
+bridge smoothly moves the GPS-free mock fix toward it. The simplified panel
+offers Pause and Use map point; it does not switch on GPS-module power. In the
+full operator view, Start/Pause/Reset control the NMEA trace and GPS mode is
+for an actually connected receiver. Close IDF Monitor before the bridge takes
+the USB port. Hold the PCB button only for a deliberate bounded-output bench
+demo; leave it released during setup and mock-input checks.
 
 ESP32 local coordinates use the South Africa map origin in the firmware map
-manifest. The dashboard centres its bench map there and displays only the
-ESP32 collar position when a valid fix is present; an invalid fix hides the
-marker. The geographic point overlay is approximate, and the page does not
-draw the firmware's exact road-segment lines. Other collars remain sample data
-only when ESP32 telemetry is absent.
+manifest. The dashboard centres its bench map there. A manually selected
+synthetic point remains visible while replaying. The last reported position
+also remains visible after a fix becomes invalid, labeled as invalid rather
+than presented as live. Invalid/stale data cannot enable a cue. The
+pitch-mode bench view labels a rejected manual mock-point fix `WAITING FOR
+FIX`, while retaining the red LED and cue-held indication; the full operator
+view keeps the explicit INVALID classification. The pitch-mode bench view
+shows the three status LED pins and resistors:
+GPIO7/red, GPIO21/yellow, GPIO10/green, each through its own 220 Ω resistor,
+with all LED cathodes connected to GND. The geographic point overlay is
+approximate, and the page does not draw the firmware's exact road-segment lines.
+Other collars remain sample data only when ESP32 telemetry is absent.
 Firmware pin defaults match the PCB signal nets, but its power path remains on
 HOLD. Review [`../docs/PCB_LAYOUT_REVIEW_2026-11-08.md`](../docs/PCB_LAYOUT_REVIEW_2026-11-08.md)
 before powering the collar PCB.

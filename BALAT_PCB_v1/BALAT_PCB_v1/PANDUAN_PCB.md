@@ -1,6 +1,10 @@
 # PCB BALAT v1: panduan singkat
 
 > **HOLD — jangan fabrikasi atau nyalakan PCB v1 sebelum review power-path/DRC ditutup.** Profil firmware ESP32-C3 kini sesuai dengan net signal PCB; pinout bukan lagi kendala firmware. Ringkasan temuan: [`../../docs/PCB_LAYOUT_REVIEW_2026-11-08.md`](../../docs/PCB_LAYOUT_REVIEW_2026-11-08.md). Ikuti [`../../docs/ESP32_ASSEMBLY_DEMO.md`](../../docs/ESP32_ASSEMBLY_DEMO.md) untuk integrasi bench yang dibatasi.
+>
+> Untuk uji LED dan motor getar tanpa baterai/solar, gunakan setup breadboard
+> terpisah pada [`panduan bench LED dan getar`](../../docs/LED_GETAR_BENCH_GUIDE.md).
+> Panduan bench tersebut tidak menyalakan PCB kalung v1.
 
 Per kalung ada 2 PCB, masing-masing 1 lapis tembaga, semua komponen tusuk (THT):
 

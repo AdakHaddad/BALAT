@@ -6,8 +6,16 @@ The ESP-IDF defaults now match the main PCB nets: buzzer GPIO3, motor GPIO4,
 GPS power GPIO5, button GPIO6, LED GPIO10, and GPS TX to UART RX on GPIO20.
 USB commands/logs use native USB Serial/JTAG so the console does not share
 GPIO20 with the GPS receiver. GPIO6's existing button is used as a
-**hold-to-enable** for bounded buzzer and motor cues; releasing it disables
-both outputs. The dashboard cannot enable cues.
+**hold-to-enable** for bounded cues;
+releasing it disables outputs. Synthetic mock mode can drive the status LED
+and, while the button is held, the bounded buzzer. The motor output is forced
+off in mock mode. The dashboard cannot enable cues.
+
+The standalone breadboard firmware maps green SAFE to GPIO10, yellow
+CAUTION/COOLDOWN to GPIO21, red DANGER to GPIO7, and blinks red for INVALID.
+GPIO7 and GPIO21 are not routed on PCB v1. Its fitted GPIO10 LED therefore
+shows green for SAFE only; use the separate breadboard setup for all three
+colors.
 
 The board is signal-mapped, but PCB v1 remains **HOLD for power-up with its
 battery/TP4056/solar system**. Do not attach a battery, charger, solar panel,
@@ -40,6 +48,8 @@ GPIO5. USB console uses the ESP32-C3 native USB Serial/JTAG interface.
 | GPIO5 / `GPS_EN` | PCB Q3 high-side GPS switch; active low |
 | GPIO6 / `BTN` | Hold button to GND to physically permit bounded cues |
 | GPIO10 / `LED_CTRL` | PCB D3 status LED through existing R10 220 Ω resistor |
+| GPIO7 | Red LED on standalone breadboard only; not routed on PCB v1 |
+| GPIO21 | Yellow LED on standalone breadboard only; not routed on PCB v1 |
 | GPIO20 / UART1 RX | GPS module TX, 3.3 V UART input |
 | Native USB Serial/JTAG | Dashboard bridge commands and firmware logs |
 | GND | Common logic and peripheral ground |
@@ -56,8 +66,9 @@ button can do that.
    USB/battery power path has been checked; use the breadboard setup below to
    flash and validate firmware until safe PCB bench power is confirmed.
 2. Connect the board and identify its port (`/dev/ttyACM0`, `/dev/ttyUSB0`, or
-   the matching COM port). Close any serial monitor before another program
-   opens that port.
+   the matching COM port). Before flashing, stop the dashboard bridge with
+   Ctrl-C and close any serial monitor or other program using that port. Only
+   one program can own the ESP32 USB serial port at a time.
 3. From the repository root, build and flash:
 
    ```bash
@@ -69,10 +80,13 @@ button can do that.
    ```
 
 4. Confirm the boot prints the command list and `MAP` reports a valid map.
-   The status LED should blink while the fix is INVALID. Run `STATUS` and inspect
+   On the standalone breadboard, red blinks for INVALID, yellow indicates
+   CAUTION/COOLDOWN, red indicates DANGER, and green indicates SAFE. On PCB v1,
+   only its GPIO10 green SAFE indicator is connected. Run `STATUS` and inspect
    the `risk`, `fix_valid`, `map_valid`, `fault`, and `cue_active` fields.
-5. Close IDF Monitor before starting the web bridge; only one application can
-   own the USB serial port at a time.
+5. After confirming boot, exit IDF Monitor with Ctrl-] before starting the web
+   bridge. Do not run flashing, IDF Monitor, and the dashboard bridge against
+   the same serial port concurrently.
 
 The USB console is also the mock NMEA command input. Hold the PCB button to
 GND only when intentionally checking bounded output; releasing it disables
@@ -91,10 +105,12 @@ available to pages served from an insecure LAN address such as
 Use **Start replay** to run the 201 synthetic fixes compiled into the ESP32
 firmware. The dashboard receives risk and position updates over BLE
 notifications. **Pause**, **Reset**, and **GPS mode** control that replay; while
-paused, dragging on the local map sends individual synthetic positions. This
-path uses the firmware replay fixture directly and does not exercise the NMEA
-parser. Keep the PCB hold-to-enable button released and actuator loads
-disconnected during the demonstration.
+paused, clicking the map selects a geographic mock location and dragging the
+marker sends individual synthetic positions. The map overlays the same OSM
+segments and projection metadata used by the firmware map. A single fixed
+point does not imply approach; drag toward a mapped road to provide consecutive
+approach fixes. This direct BLE path uses firmware fixes and does not exercise
+the NMEA parser. Keep actuator loads disconnected during the demonstration.
 
 ### USB serial NMEA replay
 
@@ -107,12 +123,15 @@ python3 scripts/web_demo.py --esp32-serial /dev/ttyACM0 --interval 0.1
 ```
 
 The bridge reads decision logs and exposes them at `/api/state`. Dashboard
-buttons provide Start, Pause, Reset, and GPS mode plus the fix interval. These
-controls only send the checksummed NMEA mock input; they cannot arm cues. The
-bridge transforms `data/demo_trace.csv` around the firmware origin, and the
-firmware parses it through the normal NMEA, fix-gate, map, risk, and cue path.
-The trace is synthetic, not GPS reception or a field measurement. Keep the PCB
-button released during setup and dashboard checks.
+buttons provide Start, Pause, Reset, and GPS mode plus the fix interval. In
+ESP32 mode, clicking or dragging the interactive map sends the selected
+geographic location as checksummed NMEA through the same parser and fix gate.
+The map overlays the OSM segments loaded by the firmware. These controls only
+send synthetic input; they cannot arm cues. The trace is synthetic, not GPS
+reception or a field measurement. Keep the PCB
+button released during setup and dashboard checks. For the buzzer demo only,
+use the physical button as the hold-to-enable; the mock trace never enables the
+motor.
 
 In another terminal:
 

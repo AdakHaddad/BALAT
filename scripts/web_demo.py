@@ -48,6 +48,8 @@ RISK_CODES = {name: code for code, name in RISK_NAMES.items()}
 ESP32_ORIGIN_LAT_DEG7 = -338250000
 ESP32_ORIGIN_LON_DEG7 = 186500000
 ESP32_COS_LAT_Q14 = 13611
+ESP32_MAX_COORD_CM = 1_000_000
+MOCK_MAP_SPEED_CM_S = 500
 
 # Current live telemetry state (thread-safe)
 STATE_LOCK = threading.Lock()
@@ -78,6 +80,10 @@ MOCK_CONTROL = {
     "interval": 0.1,
     "reset_pending": False,
     "stop_pending": False,
+    "manual_point": False,
+    "point_pending": None,
+    "point_x_cm": 0,
+    "point_y_cm": 0,
 }
 
 RECORD_FIELDS = (
@@ -326,6 +332,10 @@ def load_reference_map(segment_path: Path, manifest_path: Path) -> dict:
             "coordinate_unit": manifest.get("coordinate_unit", "unknown"),
             "origin_lat": manifest.get("origin_lat"),
             "origin_lon": manifest.get("origin_lon"),
+            "origin_lat_deg7": ESP32_ORIGIN_LAT_DEG7,
+            "origin_lon_deg7": ESP32_ORIGIN_LON_DEG7,
+            "cos_lat_q14": ESP32_COS_LAT_Q14,
+            "bounding_box": manifest.get("bounding_box"),
             "segments": segments,
             "notice": "Reference layer only; not loaded into the current Basys3 demo bitstream.",
         }
@@ -361,6 +371,9 @@ def mock_gps_status() -> dict:
         "index": control["index"],
         "total": control["total"],
         "interval": control["interval"],
+        "manual_point": control["manual_point"],
+        "point_x_cm": control["point_x_cm"],
+        "point_y_cm": control["point_y_cm"],
     }
 
 
@@ -505,10 +518,9 @@ def run_basys3_nmea_telemetry(port: str, baud: int, interval: float = 0.1) -> No
                     next_fix = time.monotonic()
                 if running and trace_index < len(trace) and time.monotonic() >= next_fix:
                     x_cm, y_cm = trace[trace_index]
-                    for command in nmea_commands_for_local_fix(x_cm, y_cm, datetime.now(timezone.utc)):
-                        # FPGA parser consumes raw NMEA, unlike the ESP32 console protocol.
-                        raw_sentence = command.removeprefix("NMEA ")
-                        serial_port.write(raw_sentence.encode("ascii"))
+                    commands = nmea_commands_for_local_fix(x_cm, y_cm, datetime.now(timezone.utc))
+                    # FPGA parser consumes raw NMEA, unlike the ESP32 console protocol.
+                    serial_port.write("".join(command.removeprefix("NMEA ") for command in commands).encode("ascii"))
                     with MOCK_LOCK:
                         MOCK_CONTROL["index"] = trace_index + 1
                         if MOCK_CONTROL["index"] >= MOCK_CONTROL["total"]:
@@ -593,6 +605,7 @@ def esp32_log_to_state(line: str) -> dict | None:
         return None
     if not fix_valid or not map_valid or stale:
         risk_name = "INVALID"
+    fault = fields.get("fault", "NONE")
     return {
         "x_cm": x_cm,
         "y_cm": y_cm,
@@ -605,12 +618,13 @@ def esp32_log_to_state(line: str) -> dict | None:
         "cooldown": fields.get("cooldown", "0") == "1",
         "fix_valid": fix_valid,
         "map_valid": map_valid,
+        "fault": fault,
         "battery_mv": 0,
         "quality": 0,
         "seq": seq,
         "fix_time_s": 0,
         "source": "ESP32_UART",
-        "link_status": f"ESP32 bench log · {fields.get('event', 'decision')} · fix {'valid' if fix_valid else 'invalid'} · cues remain hardware gated.",
+        "link_status": f"ESP32 bench log · {fields.get('event', 'decision')} · fix {'valid' if fix_valid else f'invalid ({fault})'} · cues remain hardware gated.",
     }
 
 
@@ -645,6 +659,60 @@ def nmea_commands_for_local_fix(x_cm: int, y_cm: int, at: datetime) -> tuple[str
     return f"NMEA {gga}", f"NMEA {rmc}"
 
 
+def synthetic_fix_command(x_cm: int, y_cm: int) -> bytes:
+    """Encode a map-selected coordinate as a GPS-free firmware mock fix."""
+    return f"FIX {x_cm} {y_cm}\r\n".encode("ascii")
+
+
+def step_towards_point(
+    current: tuple[int, int],
+    target: tuple[int, int],
+    max_distance_cm: float,
+) -> tuple[int, int]:
+    """Move a demo coordinate toward its target without teleporting."""
+    dx = target[0] - current[0]
+    dy = target[1] - current[1]
+    distance = math.hypot(dx, dy)
+    if distance <= max_distance_cm or distance == 0:
+        return target
+    ratio = max_distance_cm / distance
+    return round(current[0] + dx * ratio), round(current[1] + dy * ratio)
+
+
+def esp32_geo_to_local_cm(lat_deg7: int, lon_deg7: int) -> tuple[int, int]:
+    """Convert geographic degrees * 1e7 using the firmware's exact projection."""
+    if not -900_000_000 <= lat_deg7 <= 900_000_000:
+        raise ValueError("latitude is out of range")
+    if not -1_800_000_000 <= lon_deg7 <= 1_800_000_000:
+        raise ValueError("longitude is out of range")
+
+    delta_lat = lat_deg7 - ESP32_ORIGIN_LAT_DEG7
+    delta_lon = lon_deg7 - ESP32_ORIGIN_LON_DEG7
+    y_cm = (delta_lat * 72_872) >> 16
+    x_mid_cm = (delta_lon * 72_872) >> 16
+    x_cm = (x_mid_cm * ESP32_COS_LAT_Q14) >> 14
+    if abs(x_cm) > ESP32_MAX_COORD_CM or abs(y_cm) > ESP32_MAX_COORD_CM:
+        raise ValueError("location is outside the ESP32 coordinate range")
+    return x_cm, y_cm
+
+
+def point_to_segment_distance_cm(x_cm: int, y_cm: int, segment: dict) -> float:
+    """Return the Euclidean distance from a local point to one road segment."""
+    ax, ay = segment["ax"], segment["ay"]
+    dx, dy = segment["bx"] - ax, segment["by"] - ay
+    length_squared = dx * dx + dy * dy
+    if length_squared == 0:
+        return math.hypot(x_cm - ax, y_cm - ay)
+    projection = max(0.0, min(1.0, ((x_cm - ax) * dx + (y_cm - ay) * dy) / length_squared))
+    return math.hypot(x_cm - (ax + projection * dx), y_cm - (ay + projection * dy))
+
+
+def nearest_road_distance_cm(x_cm: int, y_cm: int, segments: list[dict]) -> float | None:
+    if not segments:
+        return None
+    return min(point_to_segment_distance_cm(x_cm, y_cm, segment) for segment in segments)
+
+
 def _load_esp32_mock_trace() -> list[tuple[int, int]]:
     path = REPO / "data" / "demo_trace.csv"
     with path.open(newline="", encoding="utf-8") as stream:
@@ -652,7 +720,7 @@ def _load_esp32_mock_trace() -> list[tuple[int, int]]:
 
 
 def run_esp32_telemetry(port: str, baud: int, mock_gps: bool = False, interval: float = 0.1) -> None:
-    """Bridge ESP32 logs and dashboard-controlled mock NMEA through firmware parsing."""
+    """Bridge ESP32 logs, synthetic map fixes, NMEA replay, and GNSS."""
     try:
         import serial
     except ImportError:
@@ -670,6 +738,10 @@ def run_esp32_telemetry(port: str, baud: int, mock_gps: bool = False, interval: 
             "interval": interval,
             "reset_pending": False,
             "stop_pending": False,
+            "manual_point": False,
+            "point_pending": None,
+            "point_x_cm": 0,
+            "point_y_cm": 0,
         })
     while True:
         try:
@@ -682,9 +754,12 @@ def run_esp32_telemetry(port: str, baud: int, mock_gps: bool = False, interval: 
 
         with MOCK_LOCK:
             MOCK_CONTROL["available"] = True
-        mode = "dashboard-controlled mock NMEA or GNSS"
+        mode = "dashboard-controlled mock fixes, NMEA replay, or GNSS"
         set_transport_status("ESP32_UART", f"Connected to {port}; {mode}.")
         next_fix = time.monotonic()
+        next_manual_fix = time.monotonic()
+        last_manual_fix = time.monotonic()
+        manual_feed_position: tuple[int, int] | None = None
         device_mock_mode = False
         was_running = False
         last_decision_at = time.monotonic()
@@ -711,8 +786,13 @@ def run_esp32_telemetry(port: str, baud: int, mock_gps: bool = False, interval: 
                     fix_interval = float(MOCK_CONTROL["interval"])
                     reset_pending = bool(MOCK_CONTROL["reset_pending"])
                     stop_pending = bool(MOCK_CONTROL["stop_pending"])
+                    manual_point = bool(MOCK_CONTROL["manual_point"])
+                    manual_x_cm = int(MOCK_CONTROL["point_x_cm"])
+                    manual_y_cm = int(MOCK_CONTROL["point_y_cm"])
+                    point_pending = MOCK_CONTROL["point_pending"]
                     MOCK_CONTROL["reset_pending"] = False
                     MOCK_CONTROL["stop_pending"] = False
+                    MOCK_CONTROL["point_pending"] = None
 
                 if reset_pending:
                     if not device_mock_mode:
@@ -720,21 +800,53 @@ def run_esp32_telemetry(port: str, baud: int, mock_gps: bool = False, interval: 
                         device_mock_mode = True
                     serial_port.write(b"MOCK RESET\r\n")
                     next_fix = time.monotonic()
+                    manual_feed_position = None
                 if stop_pending:
                     serial_port.write(b"MOCK STOP\r\n")
                     device_mock_mode = False
+                elif point_pending is not None:
+                    if not device_mock_mode:
+                        serial_port.write(b"MOCK START\r\n")
+                        device_mock_mode = True
+                    if manual_feed_position is None:
+                        manual_feed_position = point_pending
+                        serial_port.write(synthetic_fix_command(*manual_feed_position))
+                        last_manual_fix = time.monotonic()
+                    next_manual_fix = min(next_manual_fix, time.monotonic())
+                    set_transport_status(
+                        "ESP32_UART",
+                        f"Interactive synthetic fix moving toward {point_pending[0]},{point_pending[1]} cm at up to {MOCK_MAP_SPEED_CM_S / 100:.0f} m/s; GPS receiver off.",
+                    )
+                elif not stop_pending and manual_point and time.monotonic() >= next_manual_fix:
+                    if not device_mock_mode:
+                        serial_port.write(b"MOCK START\r\n")
+                        device_mock_mode = True
+                    now = time.monotonic()
+                    target = (manual_x_cm, manual_y_cm)
+                    if manual_feed_position is None:
+                        manual_feed_position = target
+                    else:
+                        elapsed = now - last_manual_fix
+                        manual_feed_position = step_towards_point(
+                            manual_feed_position,
+                            target,
+                            MOCK_MAP_SPEED_CM_S * elapsed,
+                        )
+                    serial_port.write(synthetic_fix_command(*manual_feed_position))
+                    last_manual_fix = now
+                    next_manual_fix = now + fix_interval
                 elif running and not device_mock_mode:
                     serial_port.write(b"MOCK START\r\n")
                     device_mock_mode = True
                     next_fix = time.monotonic()
                 elif not running and was_running and device_mock_mode:
                     serial_port.write(b"MOCK PAUSE\r\n")
+                    manual_feed_position = None
 
                 if not stop_pending and running and trace_index < len(trace) and time.monotonic() >= next_fix:
                     x_cm, y_cm = trace[trace_index]
                     at = datetime.now(timezone.utc)
-                    for command in nmea_commands_for_local_fix(x_cm, y_cm, at):
-                        serial_port.write(command.encode("ascii"))
+                    serial_port.write("".join(nmea_commands_for_local_fix(x_cm, y_cm, at)).encode("ascii"))
                     with MOCK_LOCK:
                         MOCK_CONTROL["index"] = trace_index + 1
                         complete = MOCK_CONTROL["index"] >= MOCK_CONTROL["total"]
@@ -1171,7 +1283,7 @@ class DemoHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlparse(self.path)
-        if url.path not in ("/api/recording/start", "/api/recording/stop", "/api/mock/control"):
+        if url.path not in ("/api/recording/start", "/api/recording/stop", "/api/mock/control", "/api/mock/point"):
             self._send_json(404, {"error": "not found"})
             return
 
@@ -1201,7 +1313,11 @@ class DemoHandler(BaseHTTPRequestHandler):
                             raise ValueError("interval must be between 0.05 and 2 seconds")
                         MOCK_CONTROL["interval"] = requested_interval
                     if action == "start":
+                        if MOCK_CONTROL["manual_point"]:
+                            MOCK_CONTROL["reset_pending"] = True
                         MOCK_CONTROL["mode"] = "mock"
+                        MOCK_CONTROL["manual_point"] = False
+                        MOCK_CONTROL["point_pending"] = None
                         if MOCK_CONTROL["index"] >= MOCK_CONTROL["total"]:
                             MOCK_CONTROL["index"] = 0
                             MOCK_CONTROL["reset_pending"] = True
@@ -1209,18 +1325,49 @@ class DemoHandler(BaseHTTPRequestHandler):
                     elif action == "pause":
                         MOCK_CONTROL["mode"] = "mock"
                         MOCK_CONTROL["running"] = False
+                        MOCK_CONTROL["point_pending"] = None
+                        if MOCK_CONTROL["manual_point"]:
+                            MOCK_CONTROL["reset_pending"] = True
+                        MOCK_CONTROL["manual_point"] = False
                     elif action == "reset":
                         MOCK_CONTROL["mode"] = "mock"
                         MOCK_CONTROL["index"] = 0
                         MOCK_CONTROL["running"] = False
                         MOCK_CONTROL["reset_pending"] = True
+                        MOCK_CONTROL["point_pending"] = None
+                        MOCK_CONTROL["manual_point"] = False
                     elif action == "stop":
                         MOCK_CONTROL["mode"] = "gps"
                         MOCK_CONTROL["running"] = False
                         MOCK_CONTROL["index"] = 0
                         MOCK_CONTROL["reset_pending"] = False
                         MOCK_CONTROL["stop_pending"] = True
+                        MOCK_CONTROL["point_pending"] = None
+                        MOCK_CONTROL["manual_point"] = False
                 result = mock_gps_status()
+            elif url.path == "/api/mock/point":
+                lat_deg7 = body.get("lat_deg7")
+                lon_deg7 = body.get("lon_deg7")
+                if isinstance(lat_deg7, bool) or not isinstance(lat_deg7, int):
+                    raise ValueError("lat_deg7 must be an integer")
+                if isinstance(lon_deg7, bool) or not isinstance(lon_deg7, int):
+                    raise ValueError("lon_deg7 must be an integer")
+                x_cm, y_cm = esp32_geo_to_local_cm(lat_deg7, lon_deg7)
+                with MOCK_LOCK:
+                    if not MOCK_CONTROL["available"]:
+                        raise RuntimeError("ESP32 serial bridge is not connected")
+                    MOCK_CONTROL["mode"] = "mock"
+                    MOCK_CONTROL["running"] = False
+                    if not MOCK_CONTROL["manual_point"]:
+                        MOCK_CONTROL["reset_pending"] = True
+                    MOCK_CONTROL["manual_point"] = True
+                    MOCK_CONTROL["point_pending"] = (x_cm, y_cm)
+                    MOCK_CONTROL["point_x_cm"] = x_cm
+                    MOCK_CONTROL["point_y_cm"] = y_cm
+                    MOCK_CONTROL["stop_pending"] = False
+                result = mock_gps_status()
+                result["x_cm"] = x_cm
+                result["y_cm"] = y_cm
             elif url.path == "/api/recording/start":
                 result = RECORDER.start(body.get("label", "poc"))
             else:

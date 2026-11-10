@@ -30,13 +30,18 @@ follow the bench-power restrictions in the guide and
 | PCB buzzer driver / motor driver | 3 / 4 | output only, bounded cue |
 | GPS enable | 5 | output, active low |
 | PCB button / cue enable | 6 | input, hold low to arm |
-| PCB status LED | 10 | output, active high |
+| Red status LED (standalone bench) | 7 | output, active high |
+| Green status LED / PCB D3 | 10 | output, active high |
+| Yellow status LED (standalone bench) | 21 | output, active high |
 | GPS TX → ESP32 UART RX | 20 | UART1 input |
 | USB console | native USB Serial/JTAG | commands and logs |
 
 Defaults are Kconfig-configurable in `main/Kconfig.projbuild`. During a bounded
-cue the firmware activates both protected PCB stages; the single PCB LED blinks
-for INVALID, is steady for CAUTION/DANGER/COOLDOWN, and is off for SAFE.
+cue the firmware activates both protected PCB stages. The standalone
+breadboard's LEDs indicate green=SAFE, yellow=CAUTION/COOLDOWN, red=DANGER, and
+blinking red=INVALID. GPIO7 and GPIO21 are not connected on PCB v1; its fitted
+GPIO10 LED shows green only for SAFE. Use the breadboard for full three-color
+status.
 
 ## Runtime contract
 
@@ -91,11 +96,15 @@ make -C esp32/test clean all
 Regenerate fixtures whenever either source CSV/JSON changes. The generator
 uses the same little-endian FNV-1a field order as `balat_map_checksum`.
 
-USB serial commands include `MOCK START|PAUSE|RESET|STOP`. The dashboard sends
-checksummed mock NMEA through this USB console; firmware then uses the same
-NMEA/fix-gating/map/risk pipeline as receiver data. `NMEA <sentence>` is
-accepted only after `MOCK START`. `STATUS`, `MAP`, `REPLAY`, `FIX`, `FAULT`,
-`CLEAR`, and `RESET` remain bench tools and cannot arm outputs.
+USB serial commands include `MOCK START|PAUSE|RESET|STOP`. Dashboard trace
+replay sends checksummed mock NMEA through this USB console; a manually chosen
+map point sends interpolated synthetic `FIX <x_cm> <y_cm>` coordinates toward
+the selected location at up to 5 m/s. The speed cap smooths this demo input;
+firmware fix, stale, and risk checks remain enabled. Both run with the GPS
+module off and use the firmware map/risk pipeline.
+`NMEA <sentence>` is accepted only after `MOCK START`. `STATUS`, `MAP`,
+`REPLAY`, `FIX`, `FAULT`, `CLEAR`, and `RESET` remain bench tools and cannot
+arm outputs.
 
 Start with no actuator connected, then a protected dummy load only. Follow
 `docs/MICROCONTROLLER_PROTOTYPE.md` before any outdoor or animal-related work.

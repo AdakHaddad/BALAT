@@ -1,6 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { FirmwareRoadMap, MockMapPoint } from "./InteractiveRoadMap";
 
 type Risk = "INVALID" | "SAFE" | "CAUTION" | "DANGER" | "COOLDOWN";
 type ConnectionState = "connecting" | "live" | "fallback";
@@ -18,6 +20,7 @@ type TelemetryState = {
   source: string;
   seq: number;
   link_status: string;
+  fault?: string;
   mock_gps?: MockGpsState;
 };
 
@@ -28,6 +31,9 @@ type MockGpsState = {
   index: number;
   total: number;
   interval: number;
+  manual_point?: boolean;
+  point_x_cm?: number;
+  point_y_cm?: number;
 };
 
 type Animal = {
@@ -46,6 +52,22 @@ const BALAT_BLE_SERVICE = "7f510001-1b15-4f0d-8e3a-7c522f8b96a1";
 const BALAT_BLE_CONTROL = "7f510002-1b15-4f0d-8e3a-7c522f8b96a1";
 const BALAT_BLE_STATUS = "7f510003-1b15-4f0d-8e3a-7c522f8b96a1";
 const BLE_REPLAY_FIX_COUNT = 201;
+const InteractiveRoadMap = dynamic(() => import("./InteractiveRoadMap"), {
+  ssr: false,
+  loading: () => <div className="map-loading">Loading OpenStreetMap…</div>,
+});
+
+export function getVisibleLivePoint(
+  telemetry: Pick<TelemetryState, "fix_valid" | "seq" | "x_cm" | "y_cm"> | null,
+  benchSource: boolean,
+) {
+  if (!benchSource || !telemetry || (!telemetry.fix_valid && telemetry.seq <= 0)) return null;
+  return { x_cm: telemetry.x_cm, y_cm: telemetry.y_cm };
+}
+
+export function benchRiskLabel(risk: Risk, mockPointActive: boolean): string {
+  return risk === "INVALID" && mockPointActive ? "WAITING FOR FIX" : risk;
+}
 
 const demoModes: Record<DemoMode, { label: string; distance: number; velocity: number; risk: Risk; note: string }> = {
   approach: { label: "Approaching road", distance: 42, velocity: 1.8, risk: "DANGER", note: "Valid fixes move toward the nearest mapped segment." },
@@ -174,8 +196,8 @@ const tone: Record<Risk, string> = {
   COOLDOWN: "cooldown",
 };
 
-function RiskBadge({ risk }: { risk: Risk }) {
-  return <span className={`risk-badge ${tone[risk]}`}><span className="status-dot" />{risk}</span>;
+function RiskBadge({ risk, label = risk }: { risk: Risk; label?: string }) {
+  return <span className={`risk-badge ${tone[risk]}`}><span className="status-dot" />{label}</span>;
 }
 
 function toRisk(value: string): Risk {
@@ -211,8 +233,23 @@ function Metric({ label, value, detail, accent = "" }: { label: string; value: s
   );
 }
 
-function MapPanel({ animals, activeId, onSelect, esp32Source, livePoint, onMoveMock }: { animals: Animal[]; activeId: string; onSelect: (id: string) => void; esp32Source: boolean; livePoint: { x_cm: number; y_cm: number } | null; onMoveMock?: (point: { x_cm: number; y_cm: number }) => void }) {
-  const displayedAnimals = esp32Source ? animals.slice(0, 1) : animals;
+function nearestRoadDistanceM(point: { x_cm: number; y_cm: number } | null, roadMap: FirmwareRoadMap | null): number | null {
+  if (!point || !roadMap?.available || roadMap.segments.length === 0) return null;
+  return Math.min(...roadMap.segments.map((segment) => {
+    const dx = segment.bx - segment.ax;
+    const dy = segment.by - segment.ay;
+    const lengthSquared = dx * dx + dy * dy;
+    const projection = lengthSquared === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((point.x_cm - segment.ax) * dx + (point.y_cm - segment.ay) * dy) / lengthSquared));
+    return Math.hypot(point.x_cm - (segment.ax + projection * dx), point.y_cm - (segment.ay + projection * dy)) / 100;
+  }));
+}
+
+function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchSource, roadMap, mockPoint, livePoint, livePointValid, pointStatus, onMoveMock }: { animals: Animal[]; activeId: string; onSelect: (id: string) => void; esp32Source: boolean; fpgaSource: boolean; benchSource: boolean; roadMap: FirmwareRoadMap | null; mockPoint: MockMapPoint | null; livePoint: { x_cm: number; y_cm: number } | null; livePointValid: boolean; pointStatus: string; onMoveMock: (point: MockMapPoint) => void }) {
+  const displayedAnimals = benchSource ? animals.slice(0, 1) : animals;
+  const shownPoint = mockPoint ?? livePoint;
+  const roadDistance = nearestRoadDistanceM(shownPoint, roadMap);
   const livePosition = livePoint ? {
     left: `${Math.max(2, Math.min(98, 50 + livePoint.x_cm / 120_000 * 100))}%`,
     top: `${Math.max(2, Math.min(98, 50 - livePoint.y_cm / 120_000 * 100))}%`,
@@ -222,29 +259,31 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, livePoint, onMoveM
       <div className="map-header">
         <div>
           <span className="eyebrow">MAP</span>
-          <h2>{esp32Source ? "Hardware bench · local origin" : "Corridor 04 · Kupang"}</h2>
+          <h2>{esp32Source ? "Cape Town · ESP32 road map" : fpgaSource ? "FPGA demo map" : "Corridor 04 · Kupang"}</h2>
         </div>
-        <span className="map-chip">OPENSTREETMAP</span>
+        <span className="map-chip">{esp32Source && roadMap?.available ? "ESP32 OSM ROADS" : "OPENSTREETMAP"}</span>
       </div>
-      <div className={esp32Source ? "map local-risk-map" : "map"} onPointerDown={(event) => {
-        if (!esp32Source || !onMoveMock) return;
-        const rect = event.currentTarget.getBoundingClientRect();
-        const x_cm = Math.round(((event.clientX - rect.left) / rect.width - 0.5) * 120_000);
-        const y_cm = Math.round((0.5 - (event.clientY - rect.top) / rect.height) * 120_000);
-        onMoveMock({ x_cm, y_cm });
-      }}>
-        {esp32Source && <svg className="local-map-art" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Local demo road map">
+      {esp32Source ? <div className="map firmware-map">
+        <InteractiveRoadMap
+          roadMap={roadMap}
+          point={mockPoint}
+          livePoint={livePoint}
+          livePointValid={livePointValid}
+          risk={selectedRisk(animals[0]?.risk ?? "INVALID")}
+          onSelect={onMoveMock}
+        />
+      </div> : <div className={fpgaSource ? "map local-risk-map" : "map"}>
+        {fpgaSource && <svg className="local-map-art" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="FPGA demo road map">
           <path className="local-road-buffer" d="M50 0V100"/><path className="local-road" d="M50 0V100"/>
-          <path className="local-road-secondary" d="M0 50H100"/><path className="local-road-secondary" d="M22 0L78 100"/>
-          <text x="52" y="8">ROAD SEGMENT</text><text x="3" y="48">CROSSING</text>
+          <text x="52" y="8">FPGA DEMO ROAD</text>
         </svg>}
-        {!esp32Source && <iframe
+        {!fpgaSource && <iframe
           title="OpenStreetMap view of Corridor 04 near Kupang"
           src="https://www.openstreetmap.org/export/embed.html?bbox=123.52%2C-10.22%2C123.66%2C-10.12&layer=mapnik&marker=-10.17,123.59"
           loading="lazy"
         />}
         {/* Overlay cattle positions on map */}
-        <div className="map-overlay">
+        {!benchSource && <div className="map-overlay">
           {displayedAnimals.map((animal, idx) => {
             if (esp32Source && !livePosition) return null;
             const positions = [
@@ -261,7 +300,6 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, livePoint, onMoveM
                 className={`map-marker ${tone[animal.risk]} ${activeId === animal.id ? 'active' : ''}`}
                 style={{ left: pos.left, top: pos.top }}
                 onClick={() => onSelect(animal.id)}
-                onPointerMove={(event) => { if ((event.buttons & 1) !== 0 && esp32Source && onMoveMock) { event.stopPropagation(); const rect = event.currentTarget.parentElement?.parentElement?.getBoundingClientRect(); if (rect) onMoveMock({ x_cm: Math.round(((event.clientX - rect.left) / rect.width - 0.5) * 120_000), y_cm: Math.round((0.5 - (event.clientY - rect.top) / rect.height) * 120_000) }); } }}
                 aria-label={`${animal.name} - ${animal.risk}`}
               >
                 <span className="marker-pulse" />
@@ -270,14 +308,21 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, livePoint, onMoveM
               </button>
             );
           })}
-        </div>
-      </div>
+        </div>}
+      </div>}
       <div className="map-footer">
-        <span>{esp32Source ? `Hardware bench local coordinates · ${livePoint ? "approximate position · firmware road lines not overlaid" : "position hidden while fix is invalid"}` : "Road geometry: local manifest v0.4.2"}</span>
+        <span>{esp32Source ? roadMap?.available ? `${roadMap.segment_count ?? roadMap.segments.length} ESP32 OSM segments · click/drag mock point${shownPoint && roadDistance !== null ? ` · ${roadDistance.toFixed(1)} m to nearest road` : ""}` : "ESP32 road manifest unavailable · connect the local bridge" : fpgaSource ? "Single FPGA demo segment" : "Road geometry: local manifest v0.4.2"}</span>
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
       </div>
+      {esp32Source && <div className="map-point-status" role="status" aria-live="polite">{pointStatus || "Click to place the mock location, then drag toward a mapped road for approach detection."}</div>}
     </div>
   );
+}
+
+function selectedRisk(risk: Risk): "safe" | "caution" | "danger" {
+  if (risk === "SAFE") return "safe";
+  if (risk === "CAUTION" || risk === "COOLDOWN") return "caution";
+  return "danger";
 }
 
 export default function Home() {
@@ -297,6 +342,8 @@ export default function Home() {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [telemetry, setTelemetry] = useState<TelemetryState | null>(null);
   const [mockGps, setMockGps] = useState<MockGpsState | null>(null);
+  const [roadMap, setRoadMap] = useState<FirmwareRoadMap | null>(null);
+  const [mockPoint, setMockPoint] = useState<MockMapPoint | null>(null);
   const [mockInterval, setMockInterval] = useState(0.1);
   const [mockControlBusy, setMockControlBusy] = useState(false);
   const [mockControlMessage, setMockControlMessage] = useState("");
@@ -306,9 +353,28 @@ export default function Home() {
   const [bleConnecting, setBleConnecting] = useState(false);
   const [bleControlBusy, setBleControlBusy] = useState(false);
   const [bleReplayRunning, setBleReplayRunning] = useState(false);
+  const [mockPointStatus, setMockPointStatus] = useState("");
   const lastMockSend = useRef(0);
+  const pendingMockPoint = useRef<MockMapPoint | null>(null);
+  const mockPointTimer = useRef<number | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_BALAT_API_URL?.replace(/\/$/, "") || "http://localhost:8888";
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`${apiBase}/api/map`, { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("Road map request failed");
+        return response.json();
+      })
+      .then((payload: { reference?: FirmwareRoadMap }) => {
+        if (!cancelled) setRoadMap(payload.reference?.available ? payload.reference : null);
+      })
+      .catch(() => {
+        if (!cancelled) setRoadMap(null);
+      });
+    return () => { cancelled = true; };
+  }, [apiBase]);
 
   useEffect(() => {
     if (bleCharacteristic) {
@@ -377,17 +443,22 @@ export default function Home() {
   const fpgaNmeaSource = connection === "live" && telemetry?.source === "BASYS3_NMEA_UART";
   const benchSource = esp32Source || fpgaNmeaSource;
   const benchLabel = fpgaNmeaSource ? "Basys 3 FPGA" : "ESP32 bench";
+  const simpleBenchView = pitchMode && esp32Source;
   const visibleAnimals = benchSource ? animals.slice(0, 1) : animals;
   const selected = useMemo(() => visibleAnimals.find((animal) => animal.id === activeId) ?? visibleAnimals[0], [activeId, visibleAnimals]);
   const dangerCount = visibleAnimals.filter((animal) => animal.risk === "DANGER").length;
   const cautionCount = visibleAnimals.filter((animal) => animal.risk === "CAUTION").length;
-  const livePoint = benchSource && telemetry?.fix_valid
-    ? { x_cm: telemetry.x_cm, y_cm: telemetry.y_cm }
-    : null;
+  const livePoint = getVisibleLivePoint(telemetry, benchSource);
   const sourceLabel = connection === "live"
     ? telemetry?.source === "ESP32_BLE" ? "LIVE ESP32 BLE" : telemetry?.source === "ESP32_UART" ? "LIVE ESP32 TELEMETRY" : telemetry?.source === "BASYS3_UART" || telemetry?.source === "BASYS3_NMEA_UART" ? "LIVE FPGA TELEMETRY" : "SYNTHETIC TRACE"
     : connection === "connecting" ? "CONNECTING TO BRIDGE" : "SYNTHETIC TRACE FALLBACK";
   const isExplainerView = view === "How BALAT works";
+  const manualMockPoint = mockGps?.manual_point &&
+    typeof mockGps.point_x_cm === "number" && Number.isFinite(mockGps.point_x_cm) &&
+    typeof mockGps.point_y_cm === "number" && Number.isFinite(mockGps.point_y_cm)
+    ? { lat_deg7: 0, lon_deg7: 0, x_cm: mockGps.point_x_cm, y_cm: mockGps.point_y_cm }
+    : null;
+  const selectedMockPoint = mockPoint ?? manualMockPoint;
   const navItems = ["Overview", "Herd monitor", "Road memory", "Telemetry log", "How BALAT works"];
   const serialReplaySource = connection === "live" && (telemetry?.source === "ESP32_UART" || telemetry?.source === "BASYS3_NMEA_UART");
   const applyBleFrame = (frame: TelemetryState) => {
@@ -460,17 +531,43 @@ export default function Home() {
       setBleControlBusy(false);
     }
   };
-  const moveMockCow = (point: { x_cm: number; y_cm: number }) => {
-    const characteristic = bleCharacteristic;
-    if (!characteristic || bleReplayRunning) return;
-    if (performance.now() - lastMockSend.current < 150) return;
-    lastMockSend.current = performance.now();
-    const packet = new Uint8Array(9);
-    const view = new DataView(packet.buffer);
-    packet[0] = 0x10;
-    view.setInt32(1, point.x_cm, true);
-    view.setInt32(5, point.y_cm, true);
-    void characteristic.writeValue(packet).catch((error) => setBleStatus(error instanceof Error ? error.message : "Position update failed"));
+  const moveMockCow = (point: MockMapPoint) => {
+    setMockPoint(point);
+    if (bleCharacteristic) {
+      if (bleReplayRunning || performance.now() - lastMockSend.current < 150) return;
+      lastMockSend.current = performance.now();
+      const packet = new Uint8Array(9);
+      const view = new DataView(packet.buffer);
+      packet[0] = 0x10;
+      view.setInt32(1, point.x_cm, true);
+      view.setInt32(5, point.y_cm, true);
+      void bleCharacteristic.writeValue(packet).then(() => setMockPointStatus("BLE mock fix sent.")).catch((error) => setMockPointStatus(error instanceof Error ? error.message : "BLE position update failed."));
+      return;
+    }
+
+    pendingMockPoint.current = point;
+    if (mockPointTimer.current !== null) return;
+
+    const flushPoint = async () => {
+      mockPointTimer.current = null;
+      const nextPoint = pendingMockPoint.current;
+      pendingMockPoint.current = null;
+      if (!nextPoint) return;
+      try {
+        const response = await fetch(`${apiBase}/api/mock/point`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat_deg7: nextPoint.lat_deg7, lon_deg7: nextPoint.lon_deg7 }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Mock location update failed.");
+        setMockPointStatus(`Mock target set · smooth demo movement up to 5 m/s · ${nextPoint.x_cm} cm E, ${nextPoint.y_cm} cm N.`);
+      } catch (error) {
+        setMockPointStatus(error instanceof Error ? error.message : "Mock location update failed.");
+      }
+      if (pendingMockPoint.current) mockPointTimer.current = window.setTimeout(() => void flushPoint(), 150);
+    };
+    void flushPoint();
   };
   const togglePitchMode = () => {
     const url = new URL(window.location.href);
@@ -527,13 +624,13 @@ export default function Home() {
 
         {bleStatus !== "BLE disconnected" && <div className="ble-status" role="status" aria-live="polite">{bleStatus}</div>}
 
-        {noticeVisible && <div className="notice"><span className="notice-icon">i</span><span><b>{connection === "live" ? "Bench telemetry connected." : "Demo environment."}</b> {connection === "live" ? esp32Source ? bleCharacteristic ? "The ESP32-C3 firmware replay uses synthetic fixtures over BLE; cue outputs still require the physical PCB button." : "The dashboard sends mock NMEA; ESP32 cue outputs still require the physical PCB button." : fpgaNmeaSource ? "Dashboard mock NMEA is parsed and assessed on the FPGA; its JA1 cue is logic-level only." : "Read-only telemetry is arriving from the BALAT bridge." : "The telemetry bridge is unavailable, so this console is showing synthetic collar data."} Animal guidance effectiveness has not been validated in field trials.</span><button onClick={() => setNoticeVisible(false)}>Dismiss</button></div>}
+        {noticeVisible && !simpleBenchView && <div className="notice"><span className="notice-icon">i</span><span><b>{connection === "live" ? "Bench telemetry connected." : "Demo environment."}</b> {connection === "live" ? esp32Source ? bleCharacteristic ? "The ESP32-C3 firmware replay uses synthetic fixtures over BLE; cue outputs still require the physical PCB button." : "The dashboard sends mock NMEA; ESP32 cue outputs still require the physical PCB button." : fpgaNmeaSource ? "Dashboard mock NMEA is parsed and assessed on the FPGA; its JA1 cue is logic-level only." : "Read-only telemetry is arriving from the BALAT bridge." : "The telemetry bridge is unavailable, so this console is showing synthetic collar data."} Animal guidance effectiveness has not been validated in field trials.</span><button onClick={() => setNoticeVisible(false)}>Dismiss</button></div>}
 
         {bleCharacteristic && <section className="mock-gps-panel" aria-label="ESP32 BLE replay controls">
           <div className="mock-gps-copy">
             <span className="eyebrow">ESP32-C3 BLE REPLAY</span>
             <strong>{bleReplayRunning ? "Firmware replay running" : "Firmware replay paused"}</strong>
-            <small>{Math.min(BLE_REPLAY_FIX_COUNT, telemetry?.seq ?? 0)} / {BLE_REPLAY_FIX_COUNT} synthetic fixes · compiled on device</small>
+            <small>{simpleBenchView ? `${Math.min(BLE_REPLAY_FIX_COUNT, telemetry?.seq ?? 0)} / ${BLE_REPLAY_FIX_COUNT} sample fixes · motor off` : `${Math.min(BLE_REPLAY_FIX_COUNT, telemetry?.seq ?? 0)} / ${BLE_REPLAY_FIX_COUNT} synthetic fixes · compiled on device`}</small>
           </div>
           <div className="mock-gps-actions">
             <button onClick={() => void controlBleReplay("start")} disabled={bleControlBusy || bleReplayRunning}>Start replay</button>
@@ -541,32 +638,37 @@ export default function Home() {
             <button onClick={() => void controlBleReplay("reset")} disabled={bleControlBusy}>Reset</button>
             <button onClick={() => void controlBleReplay("gps")} disabled={bleControlBusy}>GPS mode</button>
           </div>
-          <p className="mock-gps-note">This is a 201-fix synthetic firmware replay, not live GNSS. Keep the PCB hold-to-enable button released.</p>
+          {!simpleBenchView && <p className="mock-gps-note">Synthetic 201-fix replay, not live GNSS. The risk LED follows state; hold the physical button only to permit the bounded buzzer. Motor stays off.</p>}
         </section>}
 
         {serialReplaySource && <section className="mock-gps-panel" aria-label="Mock GPS controls">
           <div className="mock-gps-copy">
-            <span className="eyebrow">{fpgaNmeaSource ? "FPGA INPUT SIMULATION" : "ESP32 INPUT SIMULATION"}</span>
-            <strong>{mockGps?.mode === "gps" ? fpgaNmeaSource ? "Mock GPS stopped" : "GPS receiver selected" : mockGps?.running ? "Checksummed NMEA replay running" : "Mock GPS paused"}</strong>
-            <small>{mockGps ? `${mockGps.index} / ${mockGps.total} fixes · ${mockGps.interval.toFixed(2)} s per fix` : "Waiting for serial bridge status"}</small>
+            <span className="eyebrow">{simpleBenchView ? "MOCK LOCATION" : fpgaNmeaSource ? "FPGA INPUT SIMULATION" : "ESP32 INPUT SIMULATION"}</span>
+            <strong>{mockGps?.manual_point ? "Mock point selected" : mockGps?.mode === "gps" ? fpgaNmeaSource ? "Mock GPS stopped" : "GPS receiver selected" : mockGps?.running ? simpleBenchView ? "Demo running" : "Checksummed NMEA replay running" : simpleBenchView ? "Demo paused" : "Mock GPS paused"}</strong>
+            <small>{mockGps ? simpleBenchView ? `${mockGps.index} / ${mockGps.total} fixes · USB power only · no battery/solar` : `${mockGps.index} / ${mockGps.total} fixes · ${mockGps.interval.toFixed(2)} s per fix` : "Waiting for serial bridge status"}</small>
           </div>
-          <label className="mock-speed">Fix interval
+          {!simpleBenchView && <label className="mock-speed">Fix interval
             <select value={mockInterval} onChange={(event) => { const value = Number(event.target.value); setMockInterval(value); void controlMockGps("speed", value); }} disabled={!mockGps?.available || mockControlBusy}>
               <option value={0.1}>0.10 s</option><option value={0.25}>0.25 s</option><option value={0.5}>0.50 s</option><option value={1}>1.00 s</option>
             </select>
-          </label>
+          </label>}
           <div className="mock-gps-actions">
-            <button onClick={() => void controlMockGps("start")} disabled={!mockGps?.available || mockGps.running || mockControlBusy}>Start</button>
-            <button onClick={() => void controlMockGps("pause")} disabled={!mockGps?.available || !mockGps.running || mockControlBusy}>Pause</button>
-            <button onClick={() => void controlMockGps("reset")} disabled={!mockGps?.available || mockControlBusy}>Reset</button>
-            <button onClick={() => void controlMockGps("stop")} disabled={!mockGps?.available || mockControlBusy}>{fpgaNmeaSource ? "Stop replay" : "GPS mode"}</button>
+            {simpleBenchView ? mockGps?.manual_point || mockGps?.running
+              ? <button onClick={() => void controlMockGps("pause")} disabled={!mockGps.available || mockControlBusy}>Pause</button>
+              : <button onClick={() => { if (selectedMockPoint) moveMockCow(selectedMockPoint); }} disabled={!mockGps?.available || !selectedMockPoint || mockControlBusy}>Use map point</button>
+              : <>
+                <button onClick={() => void controlMockGps("start")} disabled={!mockGps?.available || mockGps.running || mockControlBusy}>Start</button>
+                <button onClick={() => void controlMockGps("pause")} disabled={!mockGps?.available || !mockGps.running || mockControlBusy}>Pause</button>
+                <button onClick={() => void controlMockGps("reset")} disabled={!mockGps?.available || mockControlBusy}>Reset</button>
+                <button onClick={() => void controlMockGps("stop")} disabled={!mockGps?.available || mockControlBusy}>{fpgaNmeaSource ? "Stop replay" : "GPS mode"}</button>
+              </>}
           </div>
-          <p className="mock-gps-note">{fpgaNmeaSource ? "The dashboard streams checksummed NMEA into FPGA UART. Cue observation is JA1 logic output; do not connect it directly to a buzzer or motor." : "Simulation supplies GPS input only. The PCB button must be held to enable bounded buzzer and motor outputs."}</p>
+          {!simpleBenchView && <p className="mock-gps-note">{fpgaNmeaSource ? "The dashboard streams checksummed NMEA into FPGA UART. Cue observation is JA1 logic output; do not connect it directly to a buzzer or motor." : "Synthetic locations use the firmware risk pipeline without a GPS receiver. Risk appears on the status LED; bounded buzzer requires the physical button, and the motor stays off."}</p>}
           {mockControlMessage && <small className="mock-gps-message" role="status">{mockControlMessage}</small>}
         </section>}
 
         <div className="content">
-          {pitchMode && !isExplainerView && <section className="pitch-summary" aria-label="Pitch evidence summary">
+          {pitchMode && !simpleBenchView && !isExplainerView && <section className="pitch-summary" aria-label="Pitch evidence summary">
             <div className="pitch-proof">
               {benchSource ? <>
                 <span><b>{telemetry?.seq ?? 0}</b><small>{fpgaNmeaSource ? "FPGA telemetry records" : "accepted ESP32 fixes"}</small></span>
@@ -580,7 +682,37 @@ export default function Home() {
               <span className="open"><b>OPEN</b><small>animal efficacy</small></span>
             </div>
           </section>}
-          {isExplainerView ? <PipelineExplainer /> : <>
+          {isExplainerView ? <PipelineExplainer /> : simpleBenchView ? <section className="bench-demo" aria-label="ESP32 LED demo">
+            <div className="bench-status">
+              <span className="eyebrow">RISK STATE</span>
+              <RiskBadge risk={selected.risk} label={benchRiskLabel(selected.risk, Boolean(mockGps?.manual_point))} />
+              <strong className={`bench-state ${tone[selected.risk]}`}>
+                {selected.risk === "INVALID" && mockGps?.manual_point ? `${benchRiskLabel(selected.risk, true)} · red LED · cue held` : selected.risk === "INVALID" ? "INVALID · red flashes · cue held" : selected.risk === "COOLDOWN" ? "CAUTION · yellow LED" : `${selected.risk} · ${selected.risk === "SAFE" ? "green" : selected.risk === "CAUTION" ? "yellow" : "red"} LED`}
+              </strong>
+              <small>{selected.risk === "INVALID" && mockGps?.manual_point ? `Fix not accepted · ${telemetry?.fault ?? "check mock input"} · cue held` : selected.risk === "INVALID" ? `Fix invalid · ${telemetry?.fault ?? "check mock input"} · cue held` : `${selected.distance} from mapped road · synthetic GPS input · motor off`}</small>
+            </div>
+            <div className="bench-wiring">
+              <span className="eyebrow">LED WIRING</span>
+              <p><b>GPIO7</b><span>220 Ω → Red LED anode (+)</span></p>
+              <p><b>GPIO21</b><span>220 Ω → Yellow LED anode (+)</span></p>
+              <p><b>GPIO10</b><span>220 Ω → Green LED anode (+)</span></p>
+              <p><b>GND</b><span>All three LED cathodes (−)</span></p>
+            </div>
+            <MapPanel
+              animals={visibleAnimals}
+              activeId={activeId}
+              onSelect={setActiveId}
+              esp32Source={esp32Source}
+              fpgaSource={fpgaNmeaSource}
+              benchSource={benchSource}
+              roadMap={roadMap}
+              mockPoint={selectedMockPoint}
+              livePoint={livePoint}
+              livePointValid={Boolean(telemetry?.fix_valid)}
+              pointStatus={mockPointStatus}
+              onMoveMock={moveMockCow}
+            />
+          </section> : <>
           <div className="metric-row">
             <Metric label={benchSource ? "BENCH DEVICE" : "HERD COVERAGE"} value={benchSource ? "01 / 01" : "05 / 05"} detail={benchSource ? `${benchLabel} reporting` : "collars reporting"} accent="green-accent" />
             <Metric label="ACTIVE RISK" value={`${dangerCount + cautionCount} ${benchSource ? "device" : "animals"}`} detail={`${dangerCount} danger · ${cautionCount} caution`} accent="orange-accent" />
@@ -593,8 +725,14 @@ export default function Home() {
               animals={visibleAnimals}
               activeId={activeId}
               onSelect={setActiveId}
-              esp32Source={benchSource}
+              esp32Source={esp32Source}
+              fpgaSource={fpgaNmeaSource}
+              benchSource={benchSource}
+              roadMap={roadMap}
+              mockPoint={selectedMockPoint}
               livePoint={livePoint}
+              livePointValid={Boolean(telemetry?.fix_valid)}
+              pointStatus={mockPointStatus}
               onMoveMock={moveMockCow}
             />
             <section className="risk-card">

@@ -16,8 +16,14 @@ config BALAT_MOTOR_GPIO
     int "PCB motor-driver control GPIO"
     default 4
 config BALAT_STATUS_LED_GPIO
-    int "PCB status LED control GPIO"
+    int "Green status LED GPIO"
     default 10
+config BALAT_LED_RED_GPIO
+    int "Red status LED GPIO (unused on PCB)"
+    default 7
+config BALAT_LED_YELLOW_GPIO
+    int "Yellow status LED GPIO (unused on PCB)"
+    default 21
 config BALAT_CUE_ENABLE_GPIO
     int "PCB button used as hold-to-enable (active low)"
     default 6
