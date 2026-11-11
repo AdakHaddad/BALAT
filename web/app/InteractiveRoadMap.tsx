@@ -2,7 +2,7 @@
 
 import L from "leaflet";
 import { useEffect, useMemo, useRef } from "react";
-import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import {
   DEFAULT_SUMBAWA_ORIGIN,
   ROAD_BUFFER_CAUTION_CM,
@@ -105,13 +105,10 @@ export default function InteractiveRoadMap({
       : localToLatLon(activePoint, roadMap)
     : null;
   const roadColor = riskColors[risk];
-  const nearestRoadPositions = match
-    ? [
-        localToLatLon({ x_cm: match.segment.ax, y_cm: match.segment.ay }, roadMap),
-        localToLatLon({ x_cm: match.segment.bx, y_cm: match.segment.by }, roadMap),
-      ] as [[number, number], [number, number]]
-    : null;
   const projectionPosition = match ? localToLatLon(match.projected, roadMap) : null;
+  const roadName = match
+    ? match.segment.name || `OSM way ${match.segment.way_id ?? match.segment.id}`
+    : null;
   const distanceLabel = match ? `${(match.distanceCm / 100).toFixed(1)} m` : null;
   const buffer = roadBufferState(match?.distanceCm);
   const bufferLabel = buffer === "danger"
@@ -128,25 +125,6 @@ export default function InteractiveRoadMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
         />
-        {(roadMap?.segments ?? []).map((segment) => (
-          <Polyline
-            key={segment.id}
-            positions={[localToLatLon({ x_cm: segment.ax, y_cm: segment.ay }, roadMap), localToLatLon({ x_cm: segment.bx, y_cm: segment.by }, roadMap)]}
-            pathOptions={{
-              color: segment.road_class >= 3 ? "#d47942" : segment.road_class === 2 ? "#4a8bb5" : "#2d7a5f",
-              weight: segment.road_class >= 3 ? 5 : 3,
-              opacity: 0.9,
-            }}
-          >
-            <Tooltip>{segment.id} · {roadClassLabel(segment.road_class)} · OSM road segment</Tooltip>
-          </Polyline>
-        ))}
-        {nearestRoadPositions && (
-          <>
-            <Polyline positions={nearestRoadPositions} pathOptions={{ color: roadColor, weight: 14, opacity: 0.16 }} />
-            <Polyline positions={nearestRoadPositions} pathOptions={{ color: roadColor, weight: 7, opacity: 0.95 }} />
-          </>
-        )}
         {projectionPosition && (
           <>
             <Circle
@@ -162,12 +140,6 @@ export default function InteractiveRoadMap({
           </>
         )}
         <ClickToMockPoint onSelect={onSelect} roadMap={roadMap} />
-        {markerPosition && projectionPosition && (
-          <Polyline
-            positions={[markerPosition, projectionPosition]}
-            pathOptions={{ color: roadColor, weight: 2, dashArray: "6 6", opacity: 0.9 }}
-          />
-        )}
         {projectionPosition && (
           <CircleMarker
             center={projectionPosition}
@@ -204,7 +176,7 @@ export default function InteractiveRoadMap({
           {match && <span className="hud-sep">·</span>}
           <small>
             {match
-              ? `${riskLabel ?? risk.toUpperCase()} · seg ${match.segment.id} · ${roadClassLabel(match.segment.road_class)}`
+              ? `${riskLabel ?? risk.toUpperCase()} · ${roadName} · ${roadClassLabel(match.segment.road_class)}`
               : "Click or drag to place the collar"}
           </small>
         </div>

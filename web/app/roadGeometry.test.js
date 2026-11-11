@@ -92,6 +92,22 @@ describe("parseRoadMapPayload", () => {
   });
 });
 
+describe("bundled OSM road map", () => {
+  test("uses the full extracted road geometry for nearest-road matching", async () => {
+    const payload = await Bun.file("./public/road_map.json").json();
+    const map = parseRoadMapPayload(payload);
+    expect(map?.source).toContain("OpenStreetMap");
+    expect(map?.segments.length).toBeGreaterThan(1_000);
+
+    if (!map) throw new Error("bundled road map did not parse");
+    const segment = map.segments[0];
+    const midpoint = { x_cm: (segment.ax + segment.bx) / 2, y_cm: (segment.ay + segment.by) / 2 };
+    const match = nearestRoadMatch(midpoint, map.segments);
+    expect(match?.segment.id).toBe(segment.id);
+    expect(match?.distanceCm).toBe(0);
+  });
+});
+
 describe("roadBufferState", () => {
   test("uses the 5 m caution and 2 m danger buffers", () => {
     expect(roadBufferState(null)).toBe("outside");

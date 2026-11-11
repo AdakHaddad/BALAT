@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { nearestRoadMatch, parseRoadMapPayload, type FirmwareRoadMap, type MockMapPoint } from "./roadGeometry";
+import { nearestRoadMatch, parseRoadMapPayload, roadBufferState, type FirmwareRoadMap, type MockMapPoint } from "./roadGeometry";
 
 type Risk = "INVALID" | "SAFE" | "CAUTION" | "DANGER" | "COOLDOWN";
 type ConnectionState = "connecting" | "live" | "fallback";
@@ -259,12 +259,24 @@ function Metric({ label, value, detail, accent = "" }: { label: string; value: s
   );
 }
 
-function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchSource, roadMap, mockPoint, livePoint, livePointValid, pointStatus, onMoveMock }: { animals: Animal[]; activeId: string; onSelect: (id: string) => void; esp32Source: boolean; fpgaSource: boolean; benchSource: boolean; roadMap: FirmwareRoadMap | null; mockPoint: MockMapPoint | null; livePoint: { x_cm: number; y_cm: number } | null; livePointValid: boolean; pointStatus: string; onMoveMock: (point: MockMapPoint) => void }) {
+function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchSource, localMapPreview, localMapRisk, roadMap, mockPoint, livePoint, livePointValid, pointStatus, onMoveMock }: { animals: Animal[]; activeId: string; onSelect: (id: string) => void; esp32Source: boolean; fpgaSource: boolean; benchSource: boolean; localMapPreview: boolean; localMapRisk: Risk; roadMap: FirmwareRoadMap | null; mockPoint: MockMapPoint | null; livePoint: { x_cm: number; y_cm: number } | null; livePointValid: boolean; pointStatus: string; onMoveMock: (point: MockMapPoint) => void }) {
   const displayedAnimals = benchSource ? animals.slice(0, 1) : animals;
   const shownPoint = mockPoint ?? livePoint;
   const roadMatch = nearestRoadMatch(shownPoint, roadMap?.segments);
   const roadDistance = roadMatch ? roadMatch.distanceCm / 100 : null;
   const activeRisk = animals[0]?.risk ?? "INVALID";
+  const mapProximity: Risk = roadBufferState(roadMatch?.distanceCm) === "danger" ? "DANGER"
+    : roadBufferState(roadMatch?.distanceCm) === "caution" ? "CAUTION" : "SAFE";
+  const mapRisk = esp32Source ? selectedRisk(activeRisk) : selectedRisk(localMapPreview ? localMapRisk : mapProximity);
+  const mapRiskLabel = esp32Source
+    ? activeRisk
+    : fpgaSource
+      ? `${livePointValid ? mapProximity : "INVALID"} · OSM proximity`
+      : localMapPreview
+        ? `${localMapRisk} · map preview`
+        : mockPoint
+          ? `${mapProximity} · bridge mock`
+          : mapProximity;
   const livePosition = livePoint ? {
     left: `${Math.max(2, Math.min(98, 50 + livePoint.x_cm / 120_000 * 100))}%`,
     top: `${Math.max(2, Math.min(98, 50 - livePoint.y_cm / 120_000 * 100))}%`,
@@ -274,30 +286,26 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchS
       <div className="map-header">
         <div>
           <span className="eyebrow">MAP</span>
-          <h2>{esp32Source ? "Sumbawa Besar · ESP32-C3 road map" : fpgaSource ? "FPGA demo map" : "Sumbawa Besar · demo replay"}</h2>
+          <h2>{esp32Source ? "Sumbawa Besar · ESP32-C3 road map" : fpgaSource ? "FPGA demo map" : "Sumbawa Besar · OSM road map"}</h2>
         </div>
-        <span className="map-chip">{esp32Source && roadMap?.available ? "SUMBAWA BESAR · OSM" : "OPENSTREETMAP"}</span>
+        <span className="map-chip">{roadMap?.available ? "SUMBAWA BESAR · OSM" : "OPENSTREETMAP"}</span>
       </div>
-      {esp32Source ? <div className="map firmware-map">
+      {roadMap?.available ? <div className="map firmware-map">
         <InteractiveRoadMap
           roadMap={roadMap}
           point={mockPoint}
           livePoint={livePoint}
           livePointValid={livePointValid}
-          risk={selectedRisk(activeRisk)}
-          riskLabel={activeRisk}
+          risk={mapRisk}
+          riskLabel={mapRiskLabel}
           onSelect={onMoveMock}
         />
-      </div> : <div className={fpgaSource ? "map local-risk-map" : "map"}>
-        {fpgaSource && <svg className="local-map-art" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="FPGA demo road map">
-          <path className="local-road-buffer" d="M50 0V100"/><path className="local-road" d="M50 0V100"/>
-          <text x="52" y="8">FPGA DEMO ROAD</text>
-        </svg>}
-        {!fpgaSource && <iframe
+      </div> : <div className="map">
+        <iframe
           title="OpenStreetMap view of Sumbawa Besar"
           src="https://www.openstreetmap.org/export/embed.html?bbox=117.38%2C-8.52%2C117.47%2C-8.46&layer=mapnik&marker=-8.49,117.42"
           loading="lazy"
-        />}
+        />
         {/* Overlay cattle positions on map */}
         {!benchSource && <div className="map-overlay">
           {displayedAnimals.map((animal, idx) => {
@@ -327,10 +335,10 @@ function MapPanel({ animals, activeId, onSelect, esp32Source, fpgaSource, benchS
         </div>}
       </div>}
       <div className="map-footer">
-        <span>{esp32Source ? roadMap?.available ? `${roadMap.segment_count ?? roadMap.segments.length} Sumbawa OSM segments${roadMatch ? ` · nearest seg ${roadMatch.segment.id} · ${roadDistance?.toFixed(1)} m to road` : " · click/drag mock point"}` : "Bundled Sumbawa road map unavailable" : fpgaSource ? "Single FPGA demo segment" : "Road geometry: local manifest v0.4.2"}</span>
+        <span>{esp32Source ? roadMap?.available ? `${roadMap.segment_count ?? roadMap.segments.length} Sumbawa OSM segments${roadMatch ? ` · nearest seg ${roadMatch.segment.id} · ${roadDistance?.toFixed(1)} m to road` : " · click/drag mock point"}` : "Bundled Sumbawa road map unavailable" : fpgaSource ? `${roadMap?.segment_count ?? roadMap?.segments.length ?? 0} OSM reference segments · FPGA risk still uses its fixed demo segment` : roadMap?.available ? `${roadMap.segment_count ?? roadMap.segments.length} OSM road segments${roadMatch ? ` · nearest seg ${roadMatch.segment.id} · ${roadDistance?.toFixed(1)} m to road` : " · click/drag to preview road distance"}` : "Bundled Sumbawa road map unavailable"}</span>
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
       </div>
-      {esp32Source && <div className="map-point-status" role="status" aria-live="polite">{pointStatus || "Click to place the mock location, then drag toward a Sumbawa road for approach detection."}</div>}
+      {roadMap?.available && <div className="map-point-status" role="status" aria-live="polite">{pointStatus || (esp32Source ? "Click to place the mock location, then drag toward a Sumbawa road for approach detection." : fpgaSource ? "OSM roads are a reference overlay; the FPGA risk state still comes from its fixed demo segment." : "Map preview only: click or drag the mock point to see its distance and proximity band against OSM roads. No device or cue output is connected.")}</div>}
     </div>
   );
 }
@@ -384,7 +392,9 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     const loadRoadMap = async () => {
-      const sources = apiBase ? [`${apiBase}/api/map`, "/road_map.json"] : ["/road_map.json"];
+      // The browser bundle contains the full OSM road geometry for map-distance
+      // feedback. The local bridge map is a smaller FPGA/firmware fixture.
+      const sources = ["/road_map.json", ...(apiBase ? [`${apiBase}/api/map`] : [])];
       for (const source of sources) {
         try {
           const response = await fetch(source, { cache: "no-store" });
@@ -485,7 +495,17 @@ export default function Home() {
   const benchSource = esp32Source || fpgaNmeaSource;
   const benchLabel = fpgaNmeaSource ? "Basys 3 FPGA" : "ESP32 bench";
   const simpleBenchView = pitchMode && esp32Source;
-  const visibleAnimals = benchSource ? animals.slice(0, 1) : animals;
+  const localMapPreview = !benchSource && !apiBase && Boolean(mockPoint && roadMap?.available);
+  const previewRoadMatch = localMapPreview ? nearestRoadMatch(mockPoint, roadMap?.segments) : null;
+  const previewRisk: Risk = previewRoadMatch
+    ? roadBufferState(previewRoadMatch.distanceCm) === "danger" ? "DANGER"
+      : roadBufferState(previewRoadMatch.distanceCm) === "caution" ? "CAUTION" : "SAFE"
+    : "SAFE";
+  const visibleAnimals = useMemo(() => benchSource
+    ? animals.slice(0, 1)
+    : localMapPreview
+      ? [{ ...animals[0], id: "MAP-MOCK", name: "Map mock point", risk: previewRisk, distance: formatDistance((previewRoadMatch?.distanceCm ?? 0) / 100), region: "Sumbawa OSM map preview", lastSeen: "synthetic point", signal: "EDGE" }]
+      : animals, [animals, benchSource, localMapPreview, previewRisk, previewRoadMatch]);
   const selected = useMemo(() => visibleAnimals.find((animal) => animal.id === activeId) ?? visibleAnimals[0], [activeId, visibleAnimals]);
   const dangerCount = visibleAnimals.filter((animal) => animal.risk === "DANGER").length;
   const cautionCount = visibleAnimals.filter((animal) => animal.risk === "CAUTION").length;
@@ -635,7 +655,12 @@ export default function Home() {
     }
 
     if (!apiBase) {
-      setMockPointStatus("Connect to ESP32 BLE to send this mock point.");
+      const match = nearestRoadMatch(point, roadMap?.segments);
+      const distanceCm = match?.distanceCm ?? null;
+      const band = roadBufferState(distanceCm);
+      const risk: Risk = band === "danger" ? "DANGER" : band === "caution" ? "CAUTION" : "SAFE";
+      const roadLabel = match?.segment.name || (match ? `OSM way ${match.segment.way_id ?? match.segment.id}` : null);
+      setMockPointStatus(`Local map preview · ${risk} proximity · ${match ? `${(distanceCm! / 100).toFixed(1)} m from ${roadLabel}` : "no road match"}. Connect ESP32 BLE for firmware decisions.`);
       return;
     }
     pendingMockPoint.current = point;
@@ -805,6 +830,8 @@ export default function Home() {
               esp32Source={esp32Source}
               fpgaSource={fpgaNmeaSource}
               benchSource={benchSource}
+              localMapPreview={localMapPreview}
+              localMapRisk={previewRisk}
               roadMap={roadMap}
               mockPoint={selectedMockPoint}
               livePoint={livePoint}
@@ -828,6 +855,8 @@ export default function Home() {
               esp32Source={esp32Source}
               fpgaSource={fpgaNmeaSource}
               benchSource={benchSource}
+              localMapPreview={localMapPreview}
+              localMapRisk={previewRisk}
               roadMap={roadMap}
               mockPoint={selectedMockPoint}
               livePoint={livePoint}

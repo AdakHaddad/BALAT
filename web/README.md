@@ -46,24 +46,27 @@ localhost, unless that environment variable explicitly configures another API.
 
 The BLE panel replays the 201 synthetic fixes compiled into the firmware and
 displays live status notifications. This is a firmware fixture replay, not live
-GPS or NMEA-parser input. The deployed dashboard bundles the small road-map
-overlay in `public/road_map.json`; its source is OpenStreetMap via Overpass API
-and it is licensed under ODbL. Map clicks and drags send synthetic coordinate
+GPS or NMEA-parser input. The dashboard bundles full road geometry for the
+Sumbawa map bounds in `public/road_map.json`, generated from the saved
+OpenStreetMap extract in `../data/osm/sumbawa_roads_osm.json` by
+`../scripts/gen_web_road_map.py`. It is licensed under ODbL. The map displays
+the OSM tile roads; the mock point's distance and proximity state use the
+bundled OSM road geometry. Map clicks and drags send synthetic coordinate
 fixes directly over BLE, smoothed to at most 5 m/s for the demo. This cap only
 affects browser-generated mock movement; firmware fix, stale, jump, and risk
 checks remain enabled. Keep the physical cue-enable button released. Detailed
 board setup and safety checks are in
 [`../docs/ESP32_ASSEMBLY_DEMO.md`](../docs/ESP32_ASSEMBLY_DEMO.md).
 
-In ESP32 mode the map is centered on the firmware map origin (Sumbawa Besar,
-lat -8.49, lon 117.42), overlays its OSM-derived road segments, and lets you
-click or drag a synthetic point. The map highlights the nearest segment,
-draws the approach line to the road, and shows the live road distance and
-risk state. Dashed rings mark the 5 m caution buffer and the 2 m danger buffer
-around the nearest road projection, so the approach is visible before the
-firmware cue fires. Drag toward a road to send consecutive mock fixes and
-exercise approach detection; the selected point is synthetic and does not come
-from a GNSS receiver.
+In ESP32 mode the map is centered on the Sumbawa map origin (lat -8.49,
+lon 117.42) and displays the real OSM tile roads without hand-drawn line
+overlays. Click or drag a synthetic point to see its distance to the nearest
+road in the bundled OSM geometry. Dashed rings mark the 5 m caution buffer and
+the 2 m danger buffer around the nearest road projection. Drag toward a road to
+send consecutive mock fixes and exercise approach detection; the selected
+point is synthetic and does not come from a GNSS receiver. The browser uses the
+full OSM road extract for map-distance feedback; ESP32 risk decisions still
+come from the bounded firmware map.
 
 ### USB serial NMEA input
 

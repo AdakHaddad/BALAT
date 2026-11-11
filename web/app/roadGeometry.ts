@@ -1,5 +1,7 @@
 export type FirmwareRoadSegment = {
   id: string;
+  way_id?: number;
+  name?: string;
   ax: number;
   ay: number;
   bx: number;

@@ -239,12 +239,6 @@ td small { display: block; font-size: 11px; grid-column: 2; }
 .pitch-proof .open { border-color: rgba(212, 121, 66, 0.3); }
 .pitch-proof .open b { color: var(--orange); }
 
-.local-risk-map { cursor: crosshair; }
-.local-map-art { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.local-map-art text { fill: var(--muted); font: 700 3.5px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; }
-.local-road { fill: none; stroke: var(--orange); stroke-width: 1.5; opacity: 0.85; }
-.local-road-buffer { fill: none; stroke: var(--orange); stroke-width: 8; opacity: 0.1; stroke-linecap: round; }
-.local-road-secondary { fill: none; stroke: var(--muted); stroke-width: 0.8; opacity: 0.5; stroke-dasharray: 3 2; }
 
 html, body { overflow-x: clip; }
 *:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
