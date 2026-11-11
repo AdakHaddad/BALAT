@@ -71,7 +71,7 @@ and a 1200-frame/120 s soak with no CRC errors, sequence gaps, or resets. See
 ## Parallel ESP32-C3 bench prototype
 - [x] Implement portable C contracts for NMEA, fixed-point coordinates, map checksum, geometry, trajectory, risk FSM, bounded cue, logging, and replay in `esp32/`.
 - [x] Add host regression for RTL geometry vectors, parser failures, map corruption, thresholds, cue bounds, and synthetic replay.
-- [x] Add the PCB signal profile: buzzer GPIO3, motor GPIO4, GPS power GPIO5, hold-to-enable button GPIO6, status LED GPIO10, and GNSS RX GPIO20.
+- [x] Add the bench signal profile: buzzer GPIO3, motor GPIO4, GPS power GPIO5, hold-to-enable jumper GPIO1, status LED GPIO10, and GNSS RX GPIO20. GPIO6/MOSI is excluded after its input readout remained high.
 - [x] Add dashboard start/pause/reset/GPS-mode and mock-fix-rate controls for checksummed NMEA input; controls cannot arm cues.
 - [x] Use the installed ESP-IDF v5.5.6 ESP32-C3 toolchain and build the firmware binary.
 - [ ] Flash and run the serial/replay demo on an ESP32-C3 board; confirm the exact module USB wiring first.

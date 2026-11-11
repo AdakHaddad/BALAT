@@ -21,9 +21,11 @@ follow the bench-power restrictions in the guide and
   directly to an ESP32 GPIO.
 - Reset, an invalid/stale/uncertain/corrupt fix, map failure, an out-of-range
   coordinate, a trajectory fault, or manual disable force cue output off.
-- The PCB report button on GPIO 6 is used as a **hold-to-enable** input: the
-  operator must hold it to permit a bounded cue, and release immediately
-  disables outputs. Dashboard commands and mock GPS never arm a cue.
+- GPIO 1 is used as an active-low **hold-to-enable** input: the operator must
+  hold a jumper or button to GND to permit a bounded cue, and release
+  immediately disables outputs. Dashboard commands and mock GPS never arm a
+  cue. GPIO 6/MOSI is deliberately not used because its live readout remained
+  high after it was reset out of JTAG function on the C3 Super Mini.
 - GPIO 5 controls GPS power through the PCB PNP switch (active low). GPIO 20 is
   GPS UART RX. The console uses native USB Serial/JTAG to avoid sharing GPIO20
   with the PCB GPS TX net. Defaults avoid ESP32-C3 strapping GPIO 2, 8, and 9.
@@ -32,7 +34,7 @@ follow the bench-power restrictions in the guide and
 |---|---:|---|
 | PCB buzzer driver / motor driver | 3 / 4 | output only, bounded cue |
 | GPS enable | 5 | output, active low |
-| PCB button / cue enable | 6 | input, hold low to arm |
+| Cue-enable jumper/button | 1 | input, hold low to arm |
 | Red status LED (standalone bench) | 7 | output, active high |
 | Green status LED / PCB D3 | 10 | output, active high |
 | Yellow status LED (standalone bench) | 21 | output, active high |

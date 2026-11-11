@@ -55,11 +55,15 @@ balat_cue_result_t balat_cue_step(balat_cue_state_t *state,
         uint32_t elapsed = (uint32_t)(now_ms - state->on_start_ms);
         if (!request || elapsed >= config->max_on_ms) {
             state->cue_en = false;
-            state->cooldown = true;
-            state->cooldown_start_ms = now_ms;
+            /* Zero explicitly disables repeat inhibition for controlled bench
+             * work while the maximum-on bound continues to apply. */
+            state->cooldown = config->cooldown_ms != 0u;
+            if (state->cooldown) {
+                state->cooldown_start_ms = now_ms;
+            }
             state->last_duration_ms = elapsed;
             result.stopped = true;
-            result.cooldown = true;
+            result.cooldown = state->cooldown;
             result.duration_ms = elapsed;
             return result;
         }

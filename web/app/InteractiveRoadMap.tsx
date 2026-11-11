@@ -199,12 +199,15 @@ export default function InteractiveRoadMap({
       </MapContainer>
       <div className={`road-reaction-hud ${risk}`} role="status" aria-live="polite">
         <span className="eyebrow">ROAD REACTION</span>
-        <strong>{distanceLabel ?? "No fix"}</strong>
-        <small>
-          {match
-            ? `${riskLabel ?? risk.toUpperCase()} · seg ${match.segment.id} · ${roadClassLabel(match.segment.road_class)}`
-            : "Click or drag to place the collar"}
-        </small>
+        <div className="hud-main">
+          <strong>{distanceLabel ?? "No fix"}</strong>
+          {match && <span className="hud-sep">·</span>}
+          <small>
+            {match
+              ? `${riskLabel ?? risk.toUpperCase()} · seg ${match.segment.id} · ${roadClassLabel(match.segment.road_class)}`
+              : "Click or drag to place the collar"}
+          </small>
+        </div>
         {match && <small className={`buffer-note ${buffer}`}>{bufferLabel}</small>}
       </div>
     </div>

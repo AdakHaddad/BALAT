@@ -3,13 +3,12 @@
 ## Board and power gate
 
 The ESP-IDF defaults now match the main PCB nets: buzzer GPIO3, motor GPIO4,
-GPS power GPIO5, button GPIO6, LED GPIO10, and GPS TX to UART RX on GPIO20.
+GPS power GPIO5, cue-enable GPIO1, LED GPIO10, and GPS TX to UART RX on GPIO20.
 USB commands/logs use native USB Serial/JTAG so the console does not share
-GPIO20 with the GPS receiver. GPIO6's existing button is used as a
-**hold-to-enable** for bounded cues;
-releasing it disables outputs. Synthetic mock mode can drive the status LED
-and, while the button is held, the bounded buzzer. The motor output is forced
-off in mock mode. The dashboard cannot enable cues.
+GPIO20 with the GPS receiver. GPIO1 is used as a
+**hold-to-enable** for bounded cues; releasing it disables outputs. Synthetic
+mock mode can drive the status LED and, while the button is held, the bounded
+vibration and buzzer outputs. The dashboard cannot enable cues.
 
 The standalone breadboard firmware maps green SAFE to GPIO10, yellow
 CAUTION/COOLDOWN to GPIO21, red DANGER to GPIO7, and blinks red for INVALID.
@@ -31,7 +30,7 @@ below if safe bench power has not been confirmed. See
   mock NMEA demo.
 - Assembled main PCB with its fitted 220 Ω status LED and protected buzzer and
   motor transistor stages, or a breadboard equivalent.
-- The PCB button on GPIO6; hold it only for an intentional bounded-output
+- A button or jumper from GPIO1 to GND; hold it only for an intentional bounded-output
   bench check. Releasing it immediately disarms cue outputs.
 - Breadboard, jumper wires, and multimeter.
 
@@ -46,7 +45,7 @@ GPIO5. USB console uses the ESP32-C3 native USB Serial/JTAG interface.
 | GPIO3 / `BUZ_CTRL` | PCB Q1 buzzer-driver control; for a separate breadboard module, connect to 3.3 V-compatible active-buzzer `SIG` |
 | GPIO4 / `MOT_CTRL` | PCB Q2 vibration-driver control; for a separate breadboard module, connect to driver `IN`, never to a bare motor |
 | GPIO5 / `GPS_EN` | PCB Q3 high-side GPS switch; active low |
-| GPIO6 / `BTN` | Hold button to GND to physically permit bounded cues |
+| GPIO1 / `CUE_EN` | Hold jumper/button to GND to physically permit bounded cues |
 | GPIO10 / `LED_CTRL` | PCB D3 status LED through existing R10 220 Ω resistor |
 | GPIO7 | Red LED on standalone breadboard only; not routed on PCB v1 |
 | GPIO21 | Yellow LED on standalone breadboard only; not routed on PCB v1 |
@@ -64,14 +63,15 @@ module's current exceeds the ESP32 board supply rating. A bare two-wire
 vibration motor removed from a PS controller still needs a suitable protected
 driver stage. Never connect a motor or buzzer load directly to an ESP32 pin.
 Keep actuator loads disconnected during first logic checks. Mock GPS cannot
-arm cues; only a physically held PCB button can do that.
+arm cues; only a physically held GPIO1 jumper/button can do that.
 
 Current firmware behavior on valid GNSS: `CAUTION` gives a bounded vibration
 pulse on GPIO4 only; `DANGER` activates the protected buzzer and vibration
-outputs together. GPIO6 must be held to enable cues. Each pulse is limited to
+outputs together. GPIO1 must be held to enable cues. Each pulse is limited to
 500 ms. A transition into DANGER may override the 30-second cooldown once so
 the danger cue is not delayed; repeated cues at the same risk level still
-follow the cooldown. In mock/demo mode, vibration is forced off.
+follow the cooldown. Mock/demo mode uses the same cue mapping while the button
+is held.
 
 ## First power-up and firmware
 
@@ -102,7 +102,7 @@ follow the cooldown. In mock/demo mode, vibration is forced off.
    bridge. Do not run flashing, IDF Monitor, and the dashboard bridge against
    the same serial port concurrently.
 
-The USB console is also the mock NMEA command input. Hold the PCB button to
+The USB console is also the mock NMEA command input. Hold the GPIO1 jumper/button to
 GND only when intentionally checking bounded output; releasing it disables
 the buzzer and motor controls.
 
@@ -143,9 +143,9 @@ geographic location as checksummed NMEA through the same parser and fix gate.
 The map overlays the OSM segments loaded by the firmware. These controls only
 send synthetic input; they cannot arm cues. The trace is synthetic, not GPS
 reception or a field measurement. Keep the PCB
-button released during setup and dashboard checks. For the buzzer demo only,
-use the physical button as the hold-to-enable; the mock trace never enables the
-motor.
+button released during setup and dashboard checks. For the buzzer/motor demo,
+hold the physical button as the hold-to-enable; the mock trace alone cannot arm
+cues.
 
 In another terminal:
 
@@ -160,7 +160,7 @@ state/local coordinates. The map view switches to the manifest origin
 (-33.825, 18.65) and labels the position as a bench demo. The point overlay is
 approximate, and the page does not draw the firmware's exact road-segment
 geometry. Dashboard controls affect mock GPS input only; cue enable remains a
-physical hold on the PCB button. Stop the bridge with Ctrl-C.
+physical hold on the GPIO1 jumper/button. Stop the bridge with Ctrl-C.
 
 For real GNSS, choose **GPS mode** on the dashboard (or send `MOCK STOP`), then
 connect receiver TX to GPIO20 and receiver GND to ESP32 GND. The PCB GPIO5
@@ -172,8 +172,8 @@ data before accepting RMC.
 The current KiCad DRC run found 7 courtyard-overlap errors on the main PCB and
 2 on the power PCB (KiCad 8.0.9). The boards have no unconnected pads, but the
 errors should be reviewed before fabrication. Silkscreen warnings are also
-present. Firmware now matches the main PCB signal nets; GPIO6's button is
-repurposed as a hold-to-enable for this bench demo. Resolve power-path findings
+present. This bench image uses GPIO1 (not GPIO6/MOSI) as a dedicated
+hold-to-enable jumper/button. Resolve power-path findings
 before applying power to the collar assembly.
 
 Initial tests must use simulation, USB replay, LEDs, and protected dummy loads

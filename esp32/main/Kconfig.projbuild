@@ -25,7 +25,7 @@ config BALAT_LED_YELLOW_GPIO
     int "Yellow status LED GPIO (unused on PCB)"
     default 21
 config BALAT_CUE_ENABLE_GPIO
-    int "PCB button used as hold-to-enable (active low)"
-    default 6
+    int "Cue-enable jumper/button used as hold-to-enable (active low)"
+    default 1
 
 endmenu

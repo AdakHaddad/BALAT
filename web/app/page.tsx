@@ -732,8 +732,8 @@ export default function Home() {
             <button onClick={() => void controlBleReplay("gps")} disabled={bleControlBusy}>GPS mode</button>
           </div>
           {simpleBenchView
-            ? <p className="mock-gps-note">Direct browser BLE · no bridge. Click or drag the map to feed a smooth mock fix; motor stays off.</p>
-            : <p className="mock-gps-note">Synthetic 201-fix replay, not live GNSS. The risk LED follows state; hold the physical button only to permit the bounded buzzer. Motor stays off.</p>}
+            ? <p className="mock-gps-note">Direct browser BLE · no bridge. Click or drag the map to feed a smooth mock fix; hold the PCB button (GPIO6) to permit vibration and buzzer cues.</p>
+            : <p className="mock-gps-note">Synthetic 201-fix replay, not live GNSS. The risk LED follows state; hold the physical button (GPIO6) to permit the bounded vibration and buzzer cues.</p>}
         </section>}
 
         {serialReplaySource && <section className="mock-gps-panel" aria-label="Mock GPS controls">
@@ -758,7 +758,7 @@ export default function Home() {
                 <button onClick={() => void controlMockGps("stop")} disabled={!mockGps?.available || mockControlBusy}>{fpgaNmeaSource ? "Stop replay" : "GPS mode"}</button>
               </>}
           </div>
-          {!simpleBenchView && <p className="mock-gps-note">{fpgaNmeaSource ? "The dashboard streams checksummed NMEA into FPGA UART. Cue observation is JA1 logic output; do not connect it directly to a buzzer or motor." : "Synthetic locations use the firmware risk pipeline without a GPS receiver. Risk appears on the status LED; bounded buzzer requires the physical button, and the motor stays off."}</p>}
+          {!simpleBenchView && <p className="mock-gps-note">{fpgaNmeaSource ? "The dashboard streams checksummed NMEA into FPGA UART. Cue observation is JA1 logic output; do not connect it directly to a buzzer or motor." : "Synthetic locations use the firmware risk pipeline without a GPS receiver. Risk appears on the status LED; hold the physical button (GPIO6) to permit the bounded cues (vibration on CAUTION, vibration + buzzer on DANGER)."}</p>}
           {mockControlMessage && <small className="mock-gps-message" role="status">{mockControlMessage}</small>}
         </section>}
 

@@ -24,7 +24,7 @@ TP4056, dan panel surya boleh dilewati seluruhnya.
   driver terpisah yang sesuai. Jangan tertukar dengan modul analog joystick.
 - Catu DC bench terisolasi dan current-limited bila modul membutuhkan suplai
   terpisah. Tegangan harus sesuai rating modul. Jangan gunakan baterai.
-- Multimeter. Tombol tekan opsional untuk GPIO6 jika memakai firmware demo
+- Multimeter. Tombol tekan opsional untuk GPIO1 jika memakai firmware demo
   yang memerlukan hold-to-enable.
 
 Motor dari controller berbeda boleh memiliki rating berbeda. Jangan menebak
@@ -51,7 +51,7 @@ ESP32-C3 yang dipakai; jangan mengandalkan posisi pin tanpa memeriksa silkscreen
 | GPIO4 (`MOT_CTRL`) | Ke `IN` modul getar tiga-pin (driver internal) |
 | GND | Ke katoda ketiga LED dan GND ESP32, buzzer, dan driver getar |
 | 3V3 atau 5V | Ke `VCC` modul sesuai rating yang tercetak/datasheet; jangan menebak |
-| GPIO6 (`BTN`) | Opsional: tombol antara GPIO6 dan GND; firmware PCB memakai tombol aktif-rendah sebagai hold-to-enable |
+| GPIO1 | Opsional: tombol atau jumper antara GPIO1 dan GND; firmware memakai input aktif-rendah sebagai hold-to-enable |
 | USB | Ke ESP32-C3 saja; jangan sambungkan ke PCB kalung atau rel baterai |
 
 Setiap LED harus memiliki resistor seri sendiri. Jangan menyatukan anoda LED
@@ -98,35 +98,34 @@ driver.
 3. Uji tiga LED terlebih dahulu dengan mock trace. Statusnya: hijau = SAFE,
    kuning = CAUTION/COOLDOWN, merah = DANGER, dan merah berkedip saat INVALID.
    Semua output LED aktif-tinggi. Matikan USB sebelum memperbaiki wiring.
-4. Replay mock tidak menghasilkan pulsa GPIO4. Verifikasi sinyal kontrol hanya
-   saat firmware menerima fix GNSS normal yang valid dan memang menghasilkan
-   cue; biarkan catu motor mati dan gunakan indikator input driver atau alat
-   ukur. Jika belum ada jalur uji tersebut, berhenti setelah uji LED—jangan
-   memaksa GPIO4 dengan jumper.
+4. Replay mock menghasilkan pulsa GPIO4 pada CAUTION/DANGER, tetapi hanya
+   selama tombol GPIO1 ditahan. Verifikasi sinyal kontrol dengan indikator
+   input driver atau alat ukur; biarkan catu motor mati bila ratingnya belum
+   dipastikan. Jangan memaksa GPIO4 dengan jumper.
 5. Setelah rating modul dan kebutuhan arusnya dipastikan, sambungkan VCC ke
    suplai yang sesuai dan current-limited. Jangan lanjutkan bila rating modul
    atau kemampuan sumber dayanya tidak diketahui.
 6. Lepas catu atau USB segera bila ada panas, bau, reset ESP32, atau arus tak
    terduga.
-7. Lepaskan tombol GPIO6 untuk menonaktifkan cue kapan saja. Jauhkan semua uji
+7. Lepaskan tombol GPIO1 untuk menonaktifkan cue kapan saja. Jauhkan semua uji
    dari hewan dan lalu lintas.
 
 ## Batasan firmware saat ini
 
 - Replay dashboard/USB (`MOCK`, NMEA sintetis, atau demo replay) dapat
-  memperlihatkan LED status, tetapi firmware **memaksa GPIO4/motor tetap mati**
-  pada mode mock. Jadi replay bukan cara untuk membuktikan getaran.
+  memperlihatkan LED status dan, selama tombol GPIO1 ditahan, mengaktifkan
+  buzzer dan motor. Tanpa tombol, semua keluaran cue tetap mati.
 - Pada jalur GNSS normal, cue dibatasi maksimum 500 ms dengan jeda minimum
-  30 detik. GPIO6 harus ditahan untuk mengizinkan cue; reset, fix tidak valid,
+  30 detik. GPIO1 harus ditahan untuk mengizinkan cue; reset, fix tidak valid,
   atau tombol yang dilepas menonaktifkan keluaran.
 - Pada GNSS valid, `CAUTION` memberi pulsa getar GPIO4 saja. `DANGER`
-  mengaktifkan GPIO3 (buzzer) dan GPIO4 (getar) bersama. GPIO6 harus ditahan
+  mengaktifkan GPIO3 (buzzer) dan GPIO4 (getar) bersama. GPIO1 harus ditahan
   untuk mengizinkan cue; reset, fix tidak valid, atau tombol yang dilepas
   menonaktifkan keluaran. Setiap pulsa maksimum 500 ms.
 - Transisi baru ke `DANGER` boleh melewati cooldown 30 detik agar cue bahaya
   tidak menunggu. Pengulangan pada tingkat risiko yang sama tetap mengikuti
-  cooldown. Mode mock memaksa GPIO4 tetap mati, jadi replay dashboard tidak
-  membuktikan getaran.
+  cooldown. Mode mock menggunakan pemetaan cue yang sama selama tombol GPIO1
+  ditahan.
 - Jangan menjumper GPIO3/GPIO4 untuk melewati pembatas firmware. Jika perlu
   menguji modul sebelum ada GNSS valid, gunakan firmware uji bench terpisah
   yang dibatasi dan ditinjau terlebih dahulu.

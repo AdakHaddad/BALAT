@@ -170,6 +170,18 @@ static int test_risk_and_cue(void)
     event = balat_cue_step(&cue, 1100u, true, true, true, &cue_config);
     CHECK(event.started && event.cue_active && !cue.cooldown);
 
+    /* Zero cooldown must permit the next bounded pulse without reporting an
+     * inhibited state. */
+    cue_config.cooldown_ms = 0u;
+    balat_cue_init(&cue);
+    event = balat_cue_step(&cue, 100u, true, true, false, &cue_config);
+    CHECK(event.started && event.cue_active);
+    event = balat_cue_step(&cue, 600u, true, true, false, &cue_config);
+    CHECK(event.stopped && !event.cooldown && !cue.cooldown &&
+          event.duration_ms == 500u);
+    event = balat_cue_step(&cue, 601u, true, true, false, &cue_config);
+    CHECK(event.started && event.cue_active && !cue.cooldown);
+
     balat_risk_init(&risk);
     balat_risk_step(&risk, true, false, true, false, false, 1000000, 0u, &risk_config);
     balat_risk_step(&risk, true, false, true, false, true, 250000, 0u, &risk_config);

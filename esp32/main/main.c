@@ -4,7 +4,6 @@
 #include <math.h>
 
 #include "driver/gpio.h"
-#include "driver/ledc.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -23,17 +22,13 @@
 #include "balat_log.h"
 #include "balat_nmea.h"
 
-/* PCB v1 net mapping: GPIO3 buzzer, GPIO4 motor, GPIO5 GPS power,
- * GPIO6 report button (repurposed as hold-to-enable), GPIO10 LED, GPIO20 GPS TX.
+/* Bench mapping: GPIO3 buzzer, GPIO4 motor, GPIO5 GPS power,
+ * GPIO1 hold-to-enable input, GPIO10 LED, GPIO20 GPS TX.
  * USB Serial/JTAG is the console; UART1 is reserved for the GPS receiver.
- * GPIO3 is driven by LEDC channel 0 (4 kHz, 50% duty) for the piezo buzzer;
- * it must NOT be included in the plain GPIO output mask.
+ * The PCB buzzer is an active 3.3 V type (BOM: "Buzzer aktif 3,3V"), so GPIO3
+ * is a plain active-high output. Do not drive it with LEDC PWM: an active
+ * buzzer needs a steady supply, and 4 kHz/50% PWM only averages 1.65 V.
  */
-#define BUZZER_LEDC_TIMER   LEDC_TIMER_0
-#define BUZZER_LEDC_CHANNEL LEDC_CHANNEL_0
-#define BUZZER_FREQ_HZ      4000u
-#define BUZZER_DUTY_RES     LEDC_TIMER_10_BIT         /* 0–1023 */
-#define BUZZER_DUTY_ON      512u                      /* 50% */
 #define TAG "balat"
 #define GNSS_UART UART_NUM_1
 #define LINE_CAP 160u
@@ -44,6 +39,9 @@ static balat_map_t map;
 static size_t replay_index;
 static bool replay_running;
 static bool mock_mode;
+/* A deliberately short, operator-issued bench test.  It bypasses risk and
+ * GPIO1 only long enough to verify the two protected output paths. */
+static uint32_t cue_test_until_ms;
 static QueueHandle_t command_queue;
 static uint16_t ble_status_handle;
 static uint16_t ble_connection = BLE_HS_CONN_HANDLE_NONE;
@@ -133,7 +131,7 @@ static const balat_engine_config_t ENGINE_CONFIG = {
     .risk = {.caution_enter_cm = 500, .caution_exit_cm = 600,
              .danger_enter_cm = 200, .danger_exit_cm = 300,
              .confirm_samples = 2u},
-    .cue = {.max_on_ms = 500u, .cooldown_ms = 30000u},
+    .cue = {.max_on_ms = 2000u, .cooldown_ms = 0u},
     .use_gga = true,
     .reset_reason = "boot",
 };
@@ -146,18 +144,24 @@ static uint32_t now_ms(void)
 static void outputs_apply(void)
 {
     const balat_engine_status_t *s = &engine.status;
-    bool active = s->cue_active && s->cue_enable && !s->manual_disable &&
+    bool physical_cue_enable =
+        gpio_get_level(CONFIG_BALAT_CUE_ENABLE_GPIO) == 0;
+    bool cue_test_active = physical_cue_enable && cue_test_until_ms != 0u &&
+                           (int32_t)(cue_test_until_ms - now_ms()) > 0;
+    bool active = s->cue_active && s->cue_enable && physical_cue_enable &&
+                  !s->manual_disable &&
                   s->risk_state != BALAT_RISK_INVALID;
 
     /* Log once per transition why the cue is blocked, to help diagnose
      * "DANGER on but nothing fires" on the bench.
      * Gates in priority order:
-     *   1. cue_enable: GPIO6 button must be held (active-low).
-     *   2. cue_active: engine cue state machine — may be in cooldown (30 s).
+     *   1. cue_enable: GPIO1 button must be held (active-low).
+     *   2. cue_active: engine cue state machine — may be between bounded pulses.
      *   3. manual_disable: set programmatically.
      *   4. INVALID risk state: stale GNSS or invalid map.
      */
     static bool prev_active;
+    static uint32_t last_block_log_ms = 0u;
     if (active != prev_active) {
         if (!active) {
             ESP_LOGW(TAG,
@@ -170,26 +174,32 @@ static void outputs_apply(void)
         }
         prev_active = active;
     }
+    /* Re-log the block cause every second while the cue is inhibited so the
+     * bench operator can see which gate holds the outputs off (button gate,
+     * max-on expiry, stale/invalid fix, or manual disable). */
+    if (!active && (uint32_t)(now_ms() - last_block_log_ms) >= 1000u) {
+        ESP_LOGW(TAG,
+            "cue BLOCKED: btn=%d cue_en=%d cooldown=%d manual=%d risk=%d stale=%d map=%d",
+            (int)s->cue_enable, (int)s->cue_active, (int)s->cooldown,
+            (int)s->manual_disable, (int)s->risk_state,
+            (int)s->stale, (int)s->map_valid);
+        last_block_log_ms = now_ms();
+    }
 
-    bool buzzer_active = active && s->risk_state == BALAT_RISK_DANGER;
+    bool buzzer_active = cue_test_active ||
+                         (active && s->risk_state == BALAT_RISK_DANGER);
     /* Vibration fires on CAUTION and DANGER in all modes (including mock/demo).
      * The mock_mode guard was removed: synthetic-fix bench runs need the motor
      * to prove the hardware path works before live GPS testing.
      */
-    bool vibration_active =
-        active && (s->risk_state == BALAT_RISK_CAUTION ||
-                   s->risk_state == BALAT_RISK_DANGER);
+    bool vibration_active = cue_test_active ||
+        (active && (s->risk_state == BALAT_RISK_CAUTION ||
+                    s->risk_state == BALAT_RISK_DANGER));
 
-    /* Buzzer: LEDC PWM at 4 kHz produces an audible tone from the piezo.
-     * Setting duty to 0 and stopping the timer silences it cleanly.
+    /* Buzzer: the PCB and bench buzzer are active 3.3 V modules, so a steady
+     * active-high level is the correct drive. PWM would under-drive them.
      */
-    if (buzzer_active) {
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_LEDC_CHANNEL, BUZZER_DUTY_ON);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_LEDC_CHANNEL);
-    } else {
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, BUZZER_LEDC_CHANNEL, 0u);
-        ledc_update_duty(LEDC_LOW_SPEED_MODE, BUZZER_LEDC_CHANNEL);
-    }
+    gpio_set_level(CONFIG_BALAT_BUZZER_GPIO, buzzer_active ? 1 : 0);
 
     /* Vibration motor: plain GPIO level is correct for an ERM motor. */
     gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, vibration_active ? 1 : 0);
@@ -239,14 +249,14 @@ static void set_gps_power(bool enabled)
 
 static void print_help(void)
 {
-    puts("HELP STATUS MAP REPLAY START|STOP|RESET FIX <x_cm> <y_cm>");
+    puts("HELP STATUS MAP TEST CUE REPLAY START|STOP|RESET FIX <x_cm> <y_cm>");
     puts("BLE demo replay: DEMO START|PAUSE|RESET|STOP (201 synthetic fixes)");
     puts("NMEA <sentence> is accepted only in mock mode.");
     puts("MOCK START|PAUSE|RESET|STOP; FAULT NONE|STALE|MAP|CORRUPT CLEAR RESET");
-    puts("PCB map: BUZ=GPIO3 MOT=GPIO4 GPS_EN=GPIO5 BTN=GPIO6 LED=GPIO10 GPS_RX=GPIO20");
+    puts("Bench map: BUZ=GPIO3 MOT=GPIO4 GPS_EN=GPIO5 CUE_EN=GPIO1 LED=GPIO10 GPS_RX=GPIO20");
     puts("Status LEDs: GREEN=GPIO10 RED=GPIO7 YELLOW=GPIO21; red/yellow are bench-only.");
-    puts("USB mock data cannot arm cues; hold the PCB button to enable bounded outputs.");
-        puts("Mock mode: status LED follows risk; buzzer and vibration are button-gated (hold GPIO6).");
+    puts("USB mock data cannot arm cues; hold the GPIO1 jumper/button to enable bounded outputs.");
+    puts("Mock mode: status LED follows risk; buzzer and vibration are GPIO1-gated.");
 }
 
 static void process_command(char *line)
@@ -260,6 +270,15 @@ static void process_command(char *line)
         print_help();
     } else if (strcmp(command, "STATUS") == 0) {
         log_decision("STATUS");
+    } else if (strcmp(command, "TEST") == 0) {
+        char *arg = strtok_r(NULL, " \r\n", &save);
+        if (arg != NULL && strcmp(arg, "CUE") == 0 &&
+            gpio_get_level(CONFIG_BALAT_CUE_ENABLE_GPIO) == 0) {
+            cue_test_until_ms = now_ms() + 2000u;
+            puts("OK TEST CUE; GPIO3 and GPIO4 high for 2000 ms");
+        } else {
+            puts("ERR TEST CUE requires GPIO1 held to GND");
+        }
     } else if (strcmp(command, "MAP") == 0) {
         printf("map_valid=%u,version=%lu,checksum=0x%08lX,segments=%u,source=%s\n",
                map.valid ? 1u : 0u, (unsigned long)map.manifest.map_version,
@@ -410,7 +429,8 @@ static void usb_console_task(void *arg)
 
 void app_main(void)
 {
-    uint64_t output_mask = (1ULL << CONFIG_BALAT_MOTOR_GPIO) |
+    uint64_t output_mask = (1ULL << CONFIG_BALAT_BUZZER_GPIO) |
+                           (1ULL << CONFIG_BALAT_MOTOR_GPIO) |
                            (1ULL << CONFIG_BALAT_GPS_ENABLE_GPIO) |
                            (1ULL << CONFIG_BALAT_STATUS_LED_GPIO) |
                            (1ULL << CONFIG_BALAT_LED_RED_GPIO) |
@@ -427,41 +447,19 @@ void app_main(void)
                               .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
                               .source_clk = UART_SCLK_DEFAULT};
 
-    /* Silence all outputs before configuring GPIO and LEDC. */
+    /* Silence all outputs before configuring GPIO. */
+    gpio_set_level(CONFIG_BALAT_BUZZER_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_MOTOR_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_STATUS_LED_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_LED_RED_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_LED_YELLOW_GPIO, 0);
     gpio_set_level(CONFIG_BALAT_GPS_ENABLE_GPIO, 1);
+    /* Reset the enable pad to GPIO function before making it the active-low
+     * hardware cue-enable input. */
+    ESP_ERROR_CHECK(gpio_reset_pin(CONFIG_BALAT_CUE_ENABLE_GPIO));
     gpio_config(&out);
     gpio_config(&in);
 
-    /* Buzzer: configure LEDC timer and channel for 4 kHz PWM on GPIO3.
-     * The GPIO is routed through the LEDC signal matrix — do not also
-     * configure GPIO3 as a plain output or call gpio_set_level on it.
-     */
-    ledc_timer_config_t buzzer_timer = {
-        .speed_mode      = LEDC_LOW_SPEED_MODE,
-        .timer_num       = BUZZER_LEDC_TIMER,
-        .duty_resolution = BUZZER_DUTY_RES,
-        .freq_hz         = BUZZER_FREQ_HZ,
-        .clk_cfg         = LEDC_AUTO_CLK,
-    };
-    if (ledc_timer_config(&buzzer_timer) != ESP_OK) {
-        ESP_LOGE(TAG, "LEDC timer configuration failed; buzzer will be silent");
-    }
-    ledc_channel_config_t buzzer_channel = {
-        .speed_mode     = LEDC_LOW_SPEED_MODE,
-        .channel        = BUZZER_LEDC_CHANNEL,
-        .timer_sel      = BUZZER_LEDC_TIMER,
-        .intr_type      = LEDC_INTR_DISABLE,
-        .gpio_num       = CONFIG_BALAT_BUZZER_GPIO,
-        .duty           = 0u,   /* silent at startup */
-        .hpoint         = 0,
-    };
-    if (ledc_channel_config(&buzzer_channel) != ESP_OK) {
-        ESP_LOGE(TAG, "LEDC channel configuration failed; buzzer will be silent");
-    }
     set_gps_power(true);
     uart_driver_install(GNSS_UART, 1024, 0, 0, NULL, 0);
     uart_param_config(GNSS_UART, &uart_cfg);
